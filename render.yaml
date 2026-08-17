@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: sop-forge-backend
+    env: python
+    rootDir: backend
+    buildCommand: pip install -e .
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DEEPSEEK_API_KEY
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
