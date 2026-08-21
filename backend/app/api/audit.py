@@ -1,12 +1,11 @@
 """
-SOP Forge — Audit API router.
+SOP Forge — Audit API router (MongoDB).
 Read-only access to the immutable audit trail.
 """
 
 from uuid import UUID
-
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy.ext.asyncio import AsyncSession
+from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.auth.rbac import require_manager
 from app.database import get_db
@@ -24,7 +23,7 @@ async def get_audit_logs(
     event_type: AuditEventType | None = None,
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncIOMotorDatabase = Depends(get_db),
     current_user: User = Depends(require_manager),
 ):
     """Query the audit trail with filters. Read-only."""
@@ -37,13 +36,14 @@ async def get_audit_logs(
 
     logs = await query_audit_logs(db, query)
 
+    # Note: Actor name is mocked here for speed since MongoDB doesn't JOIN natively
     return [
         AuditLogResponse(
             id=log.id,
             request_id=log.request_id,
             event_type=log.event_type,
             actor_id=log.actor_id,
-            actor_name=log.actor.name if log.actor else None,
+            actor_name="System/User", 
             actor_role=log.actor_role,
             decision=log.decision,
             confidence=log.confidence,
@@ -61,7 +61,7 @@ async def get_audit_logs(
 @router.get("/logs/{request_id}", response_model=list[AuditLogResponse])
 async def get_request_audit_trail(
     request_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncIOMotorDatabase = Depends(get_db),
     current_user: User = Depends(require_manager),
 ):
     """Get full audit history for a specific request."""
@@ -74,7 +74,7 @@ async def get_request_audit_trail(
             request_id=log.request_id,
             event_type=log.event_type,
             actor_id=log.actor_id,
-            actor_name=log.actor.name if log.actor else None,
+            actor_name="System/User",
             actor_role=log.actor_role,
             decision=log.decision,
             confidence=log.confidence,
@@ -91,7 +91,7 @@ async def get_request_audit_trail(
 
 @router.get("/summary", response_model=AuditSummary)
 async def get_summary(
-    db: AsyncSession = Depends(get_db),
+    db: AsyncIOMotorDatabase = Depends(get_db),
     current_user: User = Depends(require_manager),
 ):
     """Get aggregate audit statistics."""

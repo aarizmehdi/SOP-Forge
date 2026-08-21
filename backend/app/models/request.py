@@ -1,27 +1,12 @@
 """
-SOP Forge — SOP Request & Request History ORM models.
+SOP Forge — SOP Request & Request History ODM models (Pydantic/MongoDB).
 Tracks employee requests through the governed AI evaluation pipeline.
 """
 
 import enum
 import uuid
 from datetime import datetime, timezone
-
-from sqlalchemy import (
-    Column,
-    DateTime,
-    Enum,
-    Float,
-    ForeignKey,
-    JSON,
-    String,
-    Text,
-    Uuid,
-)
-from sqlalchemy.orm import relationship
-
-from app.database import Base
-
+from pydantic import BaseModel, Field
 
 class RequestType(str, enum.Enum):
     """Types of SOP-governed requests."""
@@ -47,72 +32,40 @@ class Decision(str, enum.Enum):
     PENDING = "pending"
 
 
-class SOPRequest(Base):
+class SOPRequest(BaseModel):
     """
     A governed employee request evaluated by the SOP AI engine.
     Maps directly to the PRD state schema (Section 7).
     """
-    __tablename__ = "sop_requests"
-
-    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    employee_id = Column(
-        Uuid(as_uuid=True),
-        ForeignKey("users.id"),
-        nullable=False,
-        index=True,
-    )
-    request_type = Column(Enum(RequestType), nullable=False, index=True)
-    submitted_data = Column(JSON, nullable=False, default=dict)
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    employee_id: str
+    request_type: RequestType
+    submitted_data: dict = Field(default_factory=dict)
 
     # AI evaluation results
-    decision = Column(Enum(Decision), nullable=False, default=Decision.PENDING)
-    confidence = Column(Float, nullable=True)
-    evaluation_reasoning = Column(Text, nullable=True)
-    retrieved_policy_refs = Column(JSON, nullable=True, default=list)
+    decision: Decision = Decision.PENDING
+    confidence: float | None = None
+    evaluation_reasoning: str | None = None
+    retrieved_policy_refs: list | None = Field(default_factory=list)
 
     # Lifecycle
-    status = Column(Enum(RequestStatus), nullable=False, default=RequestStatus.IN_PROGRESS)
-    sla_deadline = Column(DateTime(timezone=True), nullable=True)
-    override_log = Column(JSON, nullable=True, default=list)
+    status: RequestStatus = RequestStatus.IN_PROGRESS
+    sla_deadline: datetime | None = None
+    override_log: list | None = Field(default_factory=list)
 
     # Timestamps
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
-    )
-
-    # Relationships
-    employee = relationship("User", foreign_keys=[employee_id])
-    history = relationship("RequestHistory", back_populates="request", order_by="RequestHistory.created_at")
-
-    def __repr__(self) -> str:
-        return f"<SOPRequest {self.id} type={self.request_type.value} status={self.status.value}>"
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
-class RequestHistory(Base):
+class RequestHistory(BaseModel):
     """
     Tracks every state transition for a request.
     Provides a timeline view of the request lifecycle.
     """
-    __tablename__ = "request_history"
-
-    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    request_id = Column(
-        Uuid(as_uuid=True),
-        ForeignKey("sop_requests.id"),
-        nullable=False,
-        index=True,
-    )
-    action = Column(String(100), nullable=False)
-    actor_id = Column(Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True)
-    details = Column(JSON, nullable=True, default=dict)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-
-    # Relationships
-    request = relationship("SOPRequest", back_populates="history")
-    actor = relationship("User", foreign_keys=[actor_id])
-
-    def __repr__(self) -> str:
-        return f"<RequestHistory {self.action} on {self.request_id}>"
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    request_id: str
+    action: str
+    actor_id: str | None = None
+    details: dict | None = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

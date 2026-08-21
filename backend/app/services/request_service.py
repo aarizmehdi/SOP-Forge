@@ -1,5 +1,5 @@
 """
-SOP Forge — Request service.
+SOP Forge — Request service (MongoDB).
 Business logic for request submission and lifecycle management.
 """
 
@@ -8,9 +8,7 @@ import logging
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
+from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.config import get_settings
 from app.database import get_redis
@@ -24,7 +22,7 @@ settings = get_settings()
 
 
 async def submit_request(
-    db: AsyncSession,
+    db: AsyncIOMotorDatabase,
     *,
     employee: User,
     request_type: str,
@@ -33,7 +31,7 @@ async def submit_request(
     """
     Submit a new SOP request and trigger the AI evaluation pipeline.
     """
-    request_id = uuid.uuid4()
+    request_id = str(uuid.uuid4())
 
     # Create the request
     sop_request = SOPRequest(
@@ -44,17 +42,17 @@ async def submit_request(
         decision=Decision.PENDING,
         status=RequestStatus.IN_PROGRESS,
     )
-    db.add(sop_request)
+    await db.sop_requests.insert_one(sop_request.model_dump(mode="json"))
 
     # Record submission in history
     history = RequestHistory(
-        id=uuid.uuid4(),
+        id=str(uuid.uuid4()),
         request_id=request_id,
         action="submitted",
         actor_id=employee.id,
         details={"request_type": request_type, "submitted_data": submitted_data},
     )
-    db.add(history)
+    await db.request_history.insert_one(history.model_dump(mode="json"))
 
     # Create audit entry
     await create_audit_entry(
@@ -81,109 +79,90 @@ async def submit_request(
         }),
     )
 
-    await db.flush()
     logger.info(f"Request {request_id} submitted by {employee.employee_id}")
-
     return sop_request
 
 
 async def get_request_by_id(
-    db: AsyncSession,
+    db: AsyncIOMotorDatabase,
     request_id: uuid.UUID | str,
 ) -> SOPRequest | None:
-    """Get a request by ID with relationships loaded."""
-    try:
-        req_uuid = request_id if isinstance(request_id, uuid.UUID) else uuid.UUID(str(request_id))
-    except (ValueError, TypeError):
+    """Get a request by ID."""
+    doc = await db.sop_requests.find_one({"id": str(request_id)})
+    if not doc:
         return None
-
-    result = await db.execute(
-        select(SOPRequest)
-        .options(joinedload(SOPRequest.employee), joinedload(SOPRequest.history))
-        .where(SOPRequest.id == req_uuid)
-    )
-    return result.unique().scalar_one_or_none()
+    return SOPRequest(**doc)
 
 
 async def get_employee_requests(
-    db: AsyncSession,
+    db: AsyncIOMotorDatabase,
     employee_id: uuid.UUID | str,
     limit: int = 50,
     offset: int = 0,
 ) -> list[SOPRequest]:
     """Get all requests submitted by an employee."""
-    if isinstance(employee_id, str):
-        try:
-            employee_id = uuid.UUID(employee_id)
-        except ValueError:
-            return []
-
-    result = await db.execute(
-        select(SOPRequest)
-        .where(SOPRequest.employee_id == employee_id)
-        .order_by(SOPRequest.created_at.desc())
-        .limit(limit)
-        .offset(offset)
-    )
-    return list(result.scalars().all())
+    cursor = db.sop_requests.find({"employee_id": str(employee_id)}).sort("created_at", -1).skip(offset).limit(limit)
+    docs = await cursor.to_list(length=limit)
+    return [SOPRequest(**doc) for doc in docs]
 
 
 async def get_escalated_requests(
-    db: AsyncSession,
+    db: AsyncIOMotorDatabase,
     manager: User,
     limit: int = 50,
 ) -> list[SOPRequest]:
     """Get escalated requests for a manager's department."""
-    stmt = (
-        select(SOPRequest)
-        .options(
-            joinedload(SOPRequest.employee).joinedload(User.department)
-        )
-        .where(SOPRequest.status == RequestStatus.ESCALATED)
-        .order_by(SOPRequest.sla_deadline.asc().nullslast())
-        .limit(limit)
-    )
-
+    query = {"status": RequestStatus.ESCALATED.value}
+    
     # If manager (not executive/admin), filter by department
-    from app.models.user import UserRole
-    if manager.role == UserRole.MANAGER and manager.department_id:
-        stmt = stmt.join(User, SOPRequest.employee_id == User.id).where(
-            User.department_id == manager.department_id
-        )
+    if manager.role.value == "manager" and manager.department_id:
+        # Fetch all users in this department
+        dept_users_cursor = db.users.find({"department_id": manager.department_id}, {"id": 1})
+        dept_users = await dept_users_cursor.to_list(length=1000)
+        user_ids = [u["id"] for u in dept_users]
+        query["employee_id"] = {"$in": user_ids}
 
-    result = await db.execute(stmt)
-    return list(result.scalars().unique().all())
+    cursor = db.sop_requests.find(query).sort("sla_deadline", 1).limit(limit)
+    docs = await cursor.to_list(length=limit)
+    return [SOPRequest(**doc) for doc in docs]
 
 
 async def process_review_decision(
-    db: AsyncSession,
+    db: AsyncIOMotorDatabase,
     *,
-    request_id: uuid.UUID,
+    request_id: uuid.UUID | str,
     reviewer: User,
     decision: str,
     comment: str,
 ) -> SOPRequest:
     """Process a manager's review decision on an escalated request."""
-    sop_request = await get_request_by_id(db, request_id)
+    request_id_str = str(request_id)
+    sop_request = await get_request_by_id(db, request_id_str)
     if sop_request is None:
-        raise ValueError(f"Request {request_id} not found")
+        raise ValueError(f"Request {request_id_str} not found")
 
     if sop_request.status != RequestStatus.ESCALATED:
-        raise ValueError(f"Request {request_id} is not in escalated status")
+        raise ValueError(f"Request {request_id_str} is not in escalated status")
 
     # Update request
-    sop_request.decision = decision
+    sop_request.decision = Decision(decision)
     sop_request.status = RequestStatus.RESOLVED
+    sop_request.updated_at = datetime.now(timezone.utc)
+    
+    await db.sop_requests.update_one(
+        {"id": request_id_str},
+        {"$set": sop_request.model_dump(mode="json")}
+    )
 
     # Record in history
     history = RequestHistory(
-        id=uuid.uuid4(),
-        request_id=request_id,
+        id=str(uuid.uuid4()),
+        request_id=request_id_str,
         action=f"manager_{decision}",
         actor_id=reviewer.id,
         details={"decision": decision, "comment": comment},
     )
-    db.add(history)
+    await db.request_history.insert_one(history.model_dump(mode="json"))
 
     # Audit log
     event_type = (
@@ -193,7 +172,7 @@ async def process_review_decision(
     )
     await create_audit_entry(
         db,
-        request_id=request_id,
+        request_id=request_id_str,
         event_type=event_type,
         actor_id=reviewer.id,
         actor_role=reviewer.role.value,
@@ -204,45 +183,45 @@ async def process_review_decision(
     # Update Redis state
     redis = get_redis()
     await redis.setex(
-        f"request:{request_id}:state",
+        f"request:{request_id_str}:state",
         3600 * 24,
         json.dumps({
-            "request_id": str(request_id),
+            "request_id": request_id_str,
             "status": "resolved",
             "decision": decision,
         }),
     )
 
-    await db.flush()
-    logger.info(f"Request {request_id} {decision} by {reviewer.employee_id}")
+    logger.info(f"Request {request_id_str} {decision} by {reviewer.employee_id}")
     return sop_request
 
 
 async def process_override(
-    db: AsyncSession,
+    db: AsyncIOMotorDatabase,
     *,
-    request_id: uuid.UUID,
+    request_id: uuid.UUID | str,
     executive: User,
     new_decision: str,
     justification: str,
 ) -> SOPRequest:
     """
     Process an executive override. Always logged with mandatory justification.
-    Per PRD: Executive override can happen at any stage.
     """
-    sop_request = await get_request_by_id(db, request_id)
+    request_id_str = str(request_id)
+    sop_request = await get_request_by_id(db, request_id_str)
     if sop_request is None:
-        raise ValueError(f"Request {request_id} not found")
+        raise ValueError(f"Request {request_id_str} not found")
 
     previous_decision = sop_request.decision.value if sop_request.decision else None
 
     # Update request
-    sop_request.decision = new_decision
+    sop_request.decision = Decision(new_decision)
     sop_request.status = RequestStatus.OVERRIDDEN
+    sop_request.updated_at = datetime.now(timezone.utc)
 
     # Append to override log
     override_entry = {
-        "by": str(executive.id),
+        "by": executive.id,
         "by_name": executive.name,
         "justification": justification,
         "previous_decision": previous_decision,
@@ -253,20 +232,25 @@ async def process_override(
     current_log.append(override_entry)
     sop_request.override_log = current_log
 
+    await db.sop_requests.update_one(
+        {"id": request_id_str},
+        {"$set": sop_request.model_dump(mode="json")}
+    )
+
     # Record in history
     history = RequestHistory(
-        id=uuid.uuid4(),
-        request_id=request_id,
+        id=str(uuid.uuid4()),
+        request_id=request_id_str,
         action="executive_override",
         actor_id=executive.id,
         details=override_entry,
     )
-    db.add(history)
+    await db.request_history.insert_one(history.model_dump(mode="json"))
 
-    # Audit log — override entries always include previous decision
+    # Audit log
     await create_audit_entry(
         db,
-        request_id=request_id,
+        request_id=request_id_str,
         event_type=AuditEventType.EXECUTIVE_OVERRIDE,
         actor_id=executive.id,
         actor_role=executive.role.value,
@@ -279,18 +263,17 @@ async def process_override(
     # Update Redis state
     redis = get_redis()
     await redis.setex(
-        f"request:{request_id}:state",
+        f"request:{request_id_str}:state",
         3600 * 24,
         json.dumps({
-            "request_id": str(request_id),
+            "request_id": request_id_str,
             "status": "overridden",
             "decision": new_decision,
         }),
     )
 
-    await db.flush()
     logger.info(
-        f"Request {request_id} overridden by {executive.employee_id}: "
+        f"Request {request_id_str} overridden by {executive.employee_id}: "
         f"{previous_decision} → {new_decision}"
     )
     return sop_request

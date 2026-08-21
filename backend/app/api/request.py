@@ -1,5 +1,5 @@
 """
-SOP Forge â€” Request API router.
+SOP Forge — Request API router (MongoDB).
 Employee request submission and status tracking.
 """
 
@@ -7,11 +7,11 @@ import logging
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.auth.jwt import get_current_user
 from app.auth.rbac import require_employee
-from app.database import get_db
+from app.database import get_db, get_mongodb_client
 from app.models.request import Decision, RequestStatus, SOPRequest
 from app.models.user import User
 from app.schemas.request import (
@@ -36,10 +36,7 @@ async def _run_ai_workflow(request_id: str, employee_id: str, employee_code: str
     """Background task to run the LangGraph AI evaluation workflow."""
     try:
         from orchestration.graph import run_request_workflow
-        from app.database import async_session_factory
-        from app.models.request import SOPRequest
-        from sqlalchemy import select
-
+        
         result = await run_request_workflow(
             request_id=request_id,
             employee_id=employee_id,
@@ -49,26 +46,31 @@ async def _run_ai_workflow(request_id: str, employee_id: str, employee_code: str
         )
 
         # Update the request with AI results
-        async with async_session_factory() as db:
-            req_uuid = UUID(request_id) if isinstance(request_id, str) else request_id
-            stmt = select(SOPRequest).where(SOPRequest.id == req_uuid)
-            req_result = await db.execute(stmt)
-            sop_request = req_result.scalar_one_or_none()
+        client = get_mongodb_client()
+        db = client.get_database()
+        if not db.name:
+            db = client["sopforge"]
 
-            if sop_request:
-                sop_request.decision = result.get("decision", "pending")
-                sop_request.confidence = result.get("confidence", 0.0)
-                sop_request.evaluation_reasoning = result.get("evaluation_reasoning", "")
-                sop_request.retrieved_policy_refs = result.get("retrieved_policy_refs", [])
-                sop_request.status = result.get("status", "in_progress")
+        req_doc = await db.sop_requests.find_one({"id": request_id})
 
-                sla = result.get("sla_deadline")
-                if sla:
-                    from datetime import datetime
-                    sop_request.sla_deadline = datetime.fromisoformat(sla)
+        if req_doc:
+            sop_request = SOPRequest(**req_doc)
+            sop_request.decision = Decision(result.get("decision", "pending"))
+            sop_request.confidence = result.get("confidence", 0.0)
+            sop_request.evaluation_reasoning = result.get("evaluation_reasoning", "")
+            sop_request.retrieved_policy_refs = result.get("retrieved_policy_refs", [])
+            sop_request.status = RequestStatus(result.get("status", "in_progress"))
 
-                await db.commit()
-                logger.info(f"Request {request_id} updated with AI result: {result.get('decision')}")
+            sla = result.get("sla_deadline")
+            if sla:
+                from datetime import datetime
+                sop_request.sla_deadline = datetime.fromisoformat(sla)
+
+            await db.sop_requests.update_one(
+                {"id": request_id},
+                {"$set": sop_request.model_dump(mode="json")}
+            )
+            logger.info(f"Request {request_id} updated with AI result: {result.get('decision')}")
 
     except Exception as e:
         logger.error(f"AI workflow failed for {request_id}: {e}")
@@ -78,7 +80,7 @@ async def _run_ai_workflow(request_id: str, employee_id: str, employee_code: str
 async def submit_new_request(
     submission: RequestSubmission,
     background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncIOMotorDatabase = Depends(get_db),
     current_user: User = Depends(require_employee),
 ):
     """
@@ -90,7 +92,6 @@ async def submit_new_request(
         request_type=submission.request_type.value,
         submitted_data=submission.submitted_data,
     )
-    await db.commit()
 
     # Run AI evaluation in the background
     background_tasks.add_task(
@@ -109,13 +110,12 @@ async def submit_new_request(
 async def get_my_requests(
     limit: int = 50,
     offset: int = 0,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncIOMotorDatabase = Depends(get_db),
     current_user: User = Depends(require_employee),
 ):
     """Get the current employee's requests."""
-    requests = await get_employee_requests(db, current_user.id, limit, offset)
+    requests = await get_employee_requests(db, str(current_user.id), limit, offset)
     for req in requests:
-        db.expunge(req)
         req.confidence = None
     return requests
 
@@ -134,22 +134,20 @@ async def get_my_leave_balances(
 @router.get("/{request_id}", response_model=RequestResponse)
 async def get_request(
     request_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncIOMotorDatabase = Depends(get_db),
     current_user: User = Depends(require_employee),
 ):
     """Get a specific request by ID."""
-    sop_request = await get_request_by_id(db, request_id)
+    sop_request = await get_request_by_id(db, str(request_id))
     if sop_request is None:
         raise HTTPException(status_code=404, detail="Request not found")
 
     # Employees can only see their own requests (unless manager+)
-    from app.models.user import UserRole
-    if current_user.role == UserRole.EMPLOYEE:
+    if current_user.role.value == "employee":
         if sop_request.employee_id != current_user.id:
             raise HTTPException(status_code=403, detail="Access denied")
         
         # Sanitize internal AI reasoning for employees to prevent leaking flags/policies
-        db.expunge(sop_request)
         sop_request.evaluation_reasoning = None
         sop_request.confidence = None
         sop_request.retrieved_policy_refs = None
@@ -160,17 +158,16 @@ async def get_request(
 @router.post("/assistant", response_model=AssistantChatResponse)
 async def chat_assistant(
     payload: AssistantChatRequest,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncIOMotorDatabase = Depends(get_db),
     current_user: User = Depends(require_employee),
 ):
     """
-    Smart AI Brain â€” Multi-turn conversational orchestrator.
-    Tracks state, infers intent, never repeats questions, escalates suspicious reasons.
+    Smart AI Brain — Multi-turn conversational orchestrator.
     """
     msg_clean = payload.message.strip()
     msg_lower = msg_clean.lower()
 
-    # 1. GREETINGS â€” zero overhead fast path
+    # 1. GREETINGS — zero overhead fast path
     GREETINGS = {"hi", "hello", "hey", "good morning", "good afternoon", "good evening",
                  "greetings", "hi there", "hello there", "help", "who are you", "yo", "sup"}
     if msg_lower in GREETINGS or (len(msg_lower) <= 4 and msg_lower not in {"sick", "paid", "info", "days", "leave"}):
@@ -178,14 +175,14 @@ async def chat_assistant(
             f"Hello {current_user.name.split()[0]}! Welcome to SOP Forge.\n\n"
             f"I'm your Forge AI Copilot. Which department would you like to talk to?\n\n"
             f"• **HR & Leave** — Leave applications, attendance, balances\n"
-            f"â€¢ **Finance** â€” Expense claims, reimbursements\n"
-            f"â€¢ **IT & Security** â€” System access, permissions\n"
-            f"â€¢ **General Operations** â€” Facility, general inquiries\n\n"
+            f"• **Finance** — Expense claims, reimbursements\n"
+            f"• **IT & Security** — System access, permissions\n"
+            f"• **General Operations** — Facility, general inquiries\n\n"
             f"Just tell me what you need, or pick a department to get started!"
         )
         return AssistantChatResponse(response_type="chat", message=greeting_msg, request_details=None)
 
-    # 2. SMART BRAIN â€” LLM-powered multi-turn orchestrator
+    # 2. SMART BRAIN — LLM-powered multi-turn orchestrator
     import json
     from datetime import datetime, timedelta
     from app.config import get_settings
@@ -257,7 +254,7 @@ Today's date: {today_str}. Tomorrow: {tomorrow_str}.
 Current Leave Balances: {balance_str}
 If the user asks for more days than their balance, PROACTIVELY WARN THEM in your message (but still allow submission if they insist, or ask them what they want to do).
 
-## CRITICAL RULES â€” FOLLOW STRICTLY
+## CRITICAL RULES — FOLLOW STRICTLY
 
 ### Rule 1: EXTRACT EVERYTHING FROM CONTEXT
 Before responding, carefully scan the ENTIRE conversation for these fields:
@@ -268,9 +265,9 @@ Before responding, carefully scan the ENTIRE conversation for these fields:
   - Vacation/trip/rest/holiday = ANNUAL
   - Funeral/death/bereavement = CASUAL
 - **Reason**: Whatever the user said about WHY they need leave IS the reason. Examples:
-  - "my child is crying" â†’ reason = "Child needs immediate attention"
-  - "I have a headache" â†’ reason = "Feeling unwell - headache"
-  - "family emergency" â†’ reason = "Family emergency"
+  - "my child is crying" → reason = "Child needs immediate attention"
+  - "I have a headache" → reason = "Feeling unwell - headache"
+  - "family emergency" → reason = "Family emergency"
   DO NOT re-ask for the reason if the user already explained WHY.
 
 ### Rule 2: NEVER REPEAT QUESTIONS
@@ -280,7 +277,7 @@ If the user already provided a piece of information in ANY previous message, do 
 If something is genuinely missing, ask for ONLY that ONE thing in a warm, conversational tone. Never give a numbered list of questions.
 
 ### Rule 4: SUBMIT IMMEDIATELY WHEN READY
-When you have ALL required fields (even if inferred), set action to "SUBMIT". Do NOT ask "shall I proceed?" or "can I confirm?" â€” just submit.
+When you have ALL required fields (even if inferred), set action to "SUBMIT". Do NOT ask "shall I proceed?" or "can I confirm?" — just submit.
 
 ### Rule 5: ESCALATE SUSPICIOUS REASONS
 If the reason is absurd, inappropriate, or clearly not legitimate (e.g., "my husband misses me", "I feel like it", "no reason", "I just don't want to work"), set action to "ESCALATE".
@@ -361,16 +358,17 @@ Respond with ONLY valid JSON (no markdown, no backticks):
         reason = parsed_brain.get("escalation_reason", "Flagged for HR review")
         
         from app.models.incident import HRIncident
+        import uuid
         
         incident = HRIncident(
+            id=str(uuid.uuid4()),
             employee_id=current_user.id,
             incident_type="inappropriate_chat",
             message=msg_clean,
             ai_reasoning=reason,
             status="open"
         )
-        db.add(incident)
-        await db.commit()
+        await db.hr_incidents.insert_one(incident.model_dump(mode="json"))
 
         return AssistantChatResponse(
             response_type="chat",
@@ -382,8 +380,6 @@ Respond with ONLY valid JSON (no markdown, no backticks):
         req_type = parsed_brain.get("request_type") or "leave"
         data = parsed_brain.get("extracted_data") or {}
         
-        # Hard Python Validation: ZERO hallucination tolerance.
-        # If the LLM tries to submit a leave request without a reason or date, intercept it.
         if req_type == "leave":
             missing = []
             if not data.get("reason"): missing.append("reason")
@@ -410,15 +406,19 @@ Respond with ONLY valid JSON (no markdown, no backticks):
             submitted_data=data,
         )
 
-        sop_req.decision = eval_result.get("decision", "pending")
+        sop_req.decision = Decision(eval_result.get("decision", "pending"))
         sop_req.confidence = eval_result.get("confidence", 0.0)
         sop_req.evaluation_reasoning = eval_result.get("evaluation_reasoning", "")
         sop_req.retrieved_policy_refs = eval_result.get("retrieved_policy_refs", [])
-        sop_req.status = eval_result.get("status", "in_progress")
+        sop_req.status = RequestStatus(eval_result.get("status", "in_progress"))
         sla = eval_result.get("sla_deadline")
         if sla:
             sop_req.sla_deadline = datetime.fromisoformat(sla)
-        await db.commit()
+            
+        await db.sop_requests.update_one(
+            {"id": sop_req.id},
+            {"$set": sop_req.model_dump(mode="json")}
+        )
 
         dec_str = sop_req.decision.value if hasattr(sop_req.decision, 'value') else str(sop_req.decision)
         status_str = sop_req.status.value if hasattr(sop_req.status, 'value') else str(sop_req.status)
@@ -454,7 +454,6 @@ CRITICAL RULES:
             except Exception as e:
                 logger.error(f"Response generation failed: {e}")
         
-        # Fallback if LLM fails or is disabled
         if not resp_msg:
             if dec_str == "approved":
                 resp_msg = f"Your request has been approved. The system has recorded it."
@@ -464,9 +463,7 @@ CRITICAL RULES:
                 resp_msg = f"Unfortunately, this request was declined based on current policy."
 
         # Sanitize internal AI reasoning for employees to prevent leaking flags/policies
-        from app.models.user import UserRole
-        if current_user.role == UserRole.EMPLOYEE:
-            db.expunge(sop_req)
+        if current_user.role.value == "employee":
             sop_req.evaluation_reasoning = None
             sop_req.confidence = None
             sop_req.retrieved_policy_refs = None
@@ -478,7 +475,7 @@ CRITICAL RULES:
         )
 
     else:
-        # POLICY_QUESTION â€” RAG search
+        # POLICY_QUESTION — RAG search
         from app.services.sop_service import search_policy
         chunks = await search_policy(db, msg_clean, top_k=3)
 
@@ -526,7 +523,6 @@ Give a clear, direct 2-4 sentence answer.
 
 
 def _set_defaults(data: dict, req_type: str, today_str: str, msg_clean: str):
-    """Fill in default values for any missing required fields."""
     if req_type == "leave":
         data.setdefault("leave_type", "annual")
         data.setdefault("start_date", today_str)
@@ -544,7 +540,6 @@ def _set_defaults(data: dict, req_type: str, today_str: str, msg_clean: str):
 
 
 def _rule_based_brain(msg_lower: str, msg_clean: str, today_str: str, tomorrow_str: str) -> dict:
-    """Fallback brain when LLM is unavailable."""
     is_leave = any(w in msg_lower for w in ["leave", "vacation", "day off", "time off", "sick", "holiday", "chutti", "chuti"])
     is_reimb = any(w in msg_lower for w in ["reimburse", "expense", "receipt", "claim", "$", "dollar", "refund"])
     is_it = any(w in msg_lower for w in ["access", "permission", "github", "jira", "aws", "system"])
@@ -578,5 +573,4 @@ def _rule_based_brain(msg_lower: str, msg_clean: str, today_str: str, tomorrow_s
     if is_it:
         return {"action": "ASK", "message": "I can help with IT access! Which system do you need access to, and what level? (Read, Write, or Admin)", "request_type": "it_access", "missing_fields": ["system_name", "access_level"]}
 
-    return {"action": "ASK", "message": "I'm here to help! Which department would you like to talk to?\n\n- **HR & Leave** â€” Leave applications, attendance\n- **Finance** â€” Expense claims\n- **IT & Security** â€” System access\n- **General Operations** â€” Facility, inquiries"}
-
+    return {"action": "ASK", "message": "I'm here to help! Which department would you like to talk to?\n\n- **HR & Leave** — Leave applications, attendance\n- **Finance** — Expense claims\n- **IT & Security** — System access\n- **General Operations** — Facility, inquiries"}

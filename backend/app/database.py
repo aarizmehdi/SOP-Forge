@@ -1,20 +1,16 @@
 """
 SOP Forge — Database module.
-Async SQLAlchemy engine, session factory, and Redis client.
+MongoDB Async Client and Redis client.
 """
 
 from collections.abc import AsyncGenerator
+import motor.motor_asyncio
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
 try:
     import redis.asyncio as aioredis
 except ImportError:
     aioredis = None
-from sqlalchemy.ext.asyncio import (
-    AsyncSession,
-    async_sessionmaker,
-    create_async_engine,
-)
-from sqlalchemy.orm import DeclarativeBase
 
 from app.config import get_settings
 
@@ -47,51 +43,34 @@ class InMemoryRedis:
         pass
 
 
-# ── Database URL Determination ──
-import os
-ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-DEFAULT_SQLITE_PATH = os.path.join(ROOT_DIR, "sopforge.db").replace("\\", "/")
+# ── MongoDB Client ──
+# Global database client instance
+mongodb_client: AsyncIOMotorClient = None
 
-db_url = settings.database_url
-
-# Determine database engine options
-if "sqlite" in db_url or "sopforge_dev" in db_url:
-    # Default to SQLite for local standalone development
-    db_url = f"sqlite+aiosqlite:///{DEFAULT_SQLITE_PATH}"
-    engine = create_async_engine(db_url, echo=False, connect_args={"timeout": 30.0})
-else:
-    try:
-        engine = create_async_engine(
-            db_url,
-            echo=False,
-            pool_size=20,
-            max_overflow=10,
-            pool_pre_ping=True,
+def get_mongodb_client() -> AsyncIOMotorClient:
+    global mongodb_client
+    if mongodb_client is None:
+        # Use tlsAllowInvalidCertificates if running locally or avoiding cert issues
+        mongodb_client = motor.motor_asyncio.AsyncIOMotorClient(
+            settings.mongo_uri, 
+            serverSelectionTimeoutMS=5000,
+            tlsAllowInvalidCertificates=True 
         )
-    except Exception:
-        db_url = f"sqlite+aiosqlite:///{DEFAULT_SQLITE_PATH}"
-        engine = create_async_engine(db_url, echo=False, connect_args={"timeout": 30.0})
+    return mongodb_client
 
-# Enable WAL mode for SQLite
-from sqlalchemy import event
-@event.listens_for(engine.sync_engine, "connect")
-def set_sqlite_pragma(dbapi_connection, connection_record):
-    if "sqlite" in str(db_url):
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA journal_mode=WAL;")
-        cursor.execute("PRAGMA busy_timeout=30000;")
-        cursor.close()
+# ── Dependency Injection ──
+async def get_db() -> AsyncGenerator[AsyncIOMotorDatabase, None]:
+    """FastAPI dependency that yields the async MongoDB database instance."""
+    client = get_mongodb_client()
+    db = client.get_database() # Uses the DB name specified in the URI (e.g. /sopforge)
+    # If no DB specified in URI, default to sopforge
+    if not db.name:
+        db = client["sopforge"]
+    yield db
 
-# ── Session Factory ──
-async_session_factory = async_sessionmaker(
-    engine,
-    class_=AsyncSession,
-    expire_on_commit=False,
-)
 
 # ── Redis Client ──
 redis_client = None
-
 
 async def init_redis():
     """Initialize the Redis connection pool with fallback to in-memory store."""
@@ -124,23 +103,3 @@ def get_redis():
     if redis_client is None:
         redis_client = InMemoryRedis()
     return redis_client
-
-
-# ── Base Model ──
-class Base(DeclarativeBase):
-    """SQLAlchemy declarative base for all ORM models."""
-    pass
-
-
-# ── Dependency Injection ──
-async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    """FastAPI dependency that yields an async DB session."""
-    async with async_session_factory() as session:
-        try:
-            yield session
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
-        finally:
-            await session.close()

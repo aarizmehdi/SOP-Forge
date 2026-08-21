@@ -1,5 +1,5 @@
 """
-SOP Forge — JWT authentication module.
+SOP Forge — JWT authentication module (MongoDB).
 Mock JWT-based auth designed to be swappable for real SSO (SAML/OIDC).
 """
 
@@ -10,8 +10,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.config import get_settings
 from app.database import get_db
@@ -68,7 +67,7 @@ def decode_token(token: str) -> dict:
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncIOMotorDatabase = Depends(get_db),
 ) -> User:
     """FastAPI dependency: extract and validate the current user from JWT."""
     payload = decode_token(credentials.credentials)
@@ -79,22 +78,15 @@ async def get_current_user(
             detail="Token missing user identifier",
         )
 
-    try:
-        user_uuid = uuid.UUID(user_id_raw) if isinstance(user_id_raw, str) else user_id_raw
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid user ID format in token",
-        )
+    user_dict = await db.users.find_one({"id": user_id_raw})
 
-    result = await db.execute(select(User).where(User.id == user_uuid))
-    user = result.scalar_one_or_none()
-
-    if user is None:
+    if user_dict is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found",
         )
+
+    user = User(**user_dict)
 
     if not user.is_active:
         raise HTTPException(

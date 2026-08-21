@@ -19,8 +19,7 @@ class Settings(BaseSettings):
     )
 
     # ── Database ──
-    database_url: str = "postgresql+asyncpg://sopforge:sopforge_dev_2026@localhost:5432/sopforge"
-    database_url_sync: str = "postgresql://sopforge:sopforge_dev_2026@localhost:5432/sopforge"
+    mongo_uri: str = "mongodb://localhost:27017/sopforge"
 
     # ── Redis ──
     redis_url: str = "redis://localhost:6379/0"

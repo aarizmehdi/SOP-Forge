@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
-from app.database import close_redis, engine, init_redis
+from app.database import close_redis, init_redis
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -27,14 +27,8 @@ logging.basicConfig(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan: initialize and cleanup resources."""
-    # Initialize DB schema
-    try:
-        from app.database import Base
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        logger.info("Database schema initialized")
-    except Exception as e:
-        logger.warning(f"Database schema init warning: {e}")
+    # Initialize DB (No schema needed for MongoDB)
+    logger.info("Database initialized (MongoDB)")
 
     # Initialize Redis
     try:
@@ -55,7 +49,6 @@ async def lifespan(app: FastAPI):
 
     # Cleanup
     await close_redis()
-    await engine.dispose()
     logger.info("👋 SOP Forge shut down")
 
 

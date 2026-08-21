@@ -1,5 +1,5 @@
 """
-SOP Forge — Review API router.
+SOP Forge — Review API router (MongoDB).
 Manager escalation review and executive override endpoints.
 """
 
@@ -8,10 +8,10 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.auth.rbac import require_executive, require_manager
-from app.database import get_db
+from app.database import get_db, get_mongodb_client
 from app.models.user import User
 from app.schemas.review import EscalatedRequestItem, ExecutiveOverride, ReviewDecision
 from app.services.request_service import (
@@ -27,7 +27,7 @@ router = APIRouter(prefix="/api/review", tags=["Review"])
 
 @router.get("/pending", response_model=list[EscalatedRequestItem])
 async def get_pending_reviews(
-    db: AsyncSession = Depends(get_db),
+    db: AsyncIOMotorDatabase = Depends(get_db),
     current_user: User = Depends(require_manager),
 ):
     """Get escalated requests pending review for the current manager."""
@@ -43,11 +43,26 @@ async def get_pending_reviews(
             delta = sla_dl - datetime.now(timezone.utc)
             sla_remaining = max(0, int(delta.total_seconds() / 60))
 
+        # Manually fetch user name for response
+        emp_name = "Unknown"
+        emp_code = "N/A"
+        dept_name = None
+        
+        user_dict = await db.users.find_one({"id": req.employee_id})
+        if user_dict:
+            emp_name = user_dict.get("name", "Unknown")
+            emp_code = user_dict.get("employee_id", "N/A")
+            dept_id = user_dict.get("department_id")
+            if dept_id:
+                dept_dict = await db.departments.find_one({"id": dept_id})
+                if dept_dict:
+                    dept_name = dept_dict.get("name")
+
         items.append(EscalatedRequestItem(
             id=req.id,
-            employee_name=req.employee.name if req.employee else "Unknown",
-            employee_id_code=req.employee.employee_id if req.employee else "N/A",
-            department=req.employee.department.name if req.employee and req.employee.department else None,
+            employee_name=emp_name,
+            employee_id_code=emp_code,
+            department=dept_name,
             request_type=req.request_type,
             submitted_data=req.submitted_data,
             ai_decision=req.decision,
@@ -67,7 +82,7 @@ async def get_pending_reviews(
 async def review_decision(
     request_id: UUID,
     decision: ReviewDecision,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncIOMotorDatabase = Depends(get_db),
     current_user: User = Depends(require_manager),
 ):
     """Manager approves, rejects, or requests more info on an escalated request."""
@@ -93,12 +108,11 @@ async def review_decision(
 async def executive_override(
     request_id: UUID,
     override: ExecutiveOverride,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncIOMotorDatabase = Depends(get_db),
     current_user: User = Depends(require_executive),
 ):
     """
     Executive override — can happen at any stage.
-    Always logged with mandatory justification (PRD requirement).
     """
     try:
         sop_request = await process_override(

@@ -1,6 +1,6 @@
 """
 SOP Forge — Retrieve Policy node.
-RAG retrieval against pgvector SOP vector store.
+RAG retrieval against MongoDB SOP vector store.
 """
 
 import logging
@@ -13,9 +13,6 @@ logger = logging.getLogger(__name__)
 async def retrieve_policy(state: RequestState) -> dict:
     """
     Retrieve relevant SOP policy chunks via cosine similarity search.
-    
-    Uses the request context to construct a search query and finds
-    the most relevant policy sections from the embedded SOP store.
     """
     request_type = state["request_type"]
     submitted_data = state["submitted_data"]
@@ -45,15 +42,19 @@ async def retrieve_policy(state: RequestState) -> dict:
     # Perform vector search
     try:
         from app.services.sop_service import search_policy
-        from app.database import async_session_factory
+        from app.database import get_mongodb_client
 
-        async with async_session_factory() as db:
-            results = await search_policy(
-                db,
-                query=query,
-                top_k=5,
-                category=request_type if request_type != "other" else None,
-            )
+        client = get_mongodb_client()
+        db = client.get_database()
+        if not db.name:
+            db = client["sopforge"]
+
+        results = await search_policy(
+            db,
+            query=query,
+            top_k=5,
+            category=request_type if request_type != "other" else None,
+        )
 
         if results:
             policy_refs = [r["ref"] for r in results]

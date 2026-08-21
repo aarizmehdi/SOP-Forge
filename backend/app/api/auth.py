@@ -1,11 +1,10 @@
 """
-SOP Forge — Auth API router.
+SOP Forge — Auth API router (MongoDB).
 Login, token refresh, and user profile endpoints.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.auth.jwt import (
     create_access_token,
@@ -20,18 +19,17 @@ router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(credentials: LoginRequest, db: AsyncSession = Depends(get_db)):
+async def login(credentials: LoginRequest, db: AsyncIOMotorDatabase = Depends(get_db)):
     """Authenticate a user and return a JWT access token."""
-    result = await db.execute(
-        select(User).where(User.email == credentials.email)
-    )
-    user = result.scalar_one_or_none()
+    user_dict = await db.users.find_one({"email": credentials.email})
 
-    if user is None or not verify_password(credentials.password, user.hashed_password):
+    if user_dict is None or not verify_password(credentials.password, user_dict["hashed_password"]):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
         )
+
+    user = User(**user_dict)
 
     if not user.is_active:
         raise HTTPException(
@@ -55,11 +53,16 @@ async def login(credentials: LoginRequest, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/me", response_model=UserProfile)
-async def get_profile(current_user: User = Depends(get_current_user)):
+async def get_profile(
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db)
+):
     """Get the current user's profile."""
     dept_name = None
-    if current_user.department:
-        dept_name = current_user.department.name
+    if current_user.department_id:
+        dept = await db.departments.find_one({"id": current_user.department_id})
+        if dept:
+            dept_name = dept.get("name")
 
     return UserProfile(
         id=current_user.id,

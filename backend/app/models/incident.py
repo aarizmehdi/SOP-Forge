@@ -1,38 +1,23 @@
 """
-SOP Forge — Incident ORM model.
+SOP Forge — Incident ODM model (Pydantic/MongoDB).
 Dedicated table for flagged/inappropriate chats requiring HR review.
 """
 
 import uuid
 from datetime import datetime, timezone
+from pydantic import BaseModel, Field
 
-from sqlalchemy import Column, DateTime, ForeignKey, String, Text, Uuid
-from sqlalchemy.orm import relationship
-
-from app.database import Base
-
-
-class HRIncident(Base):
+class HRIncident(BaseModel):
     """
     Dedicated table for flagged incidents, such as inappropriate chat.
     Keeps them strictly separated from standard SOP requests and the audit trail.
     """
-    __tablename__ = "hr_incidents"
-
-    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    employee_id = Column(
-        Uuid(as_uuid=True),
-        ForeignKey("users.id"),
-        nullable=False,
-        index=True,
-    )
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    employee_id: str
     
-    incident_type = Column(String(50), nullable=False)  # e.g., 'inappropriate_chat'
-    message = Column(Text, nullable=False)              # The exact message the user typed
-    ai_reasoning = Column(Text, nullable=True)          # Why the AI flagged it
-    status = Column(String(20), default="open")         # 'open' or 'reviewed'
+    incident_type: str  # e.g., 'inappropriate_chat'
+    message: str        # The exact message the user typed
+    ai_reasoning: str | None = None
+    status: str = "open" # 'open' or 'reviewed'
     
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    
-    # Relationships
-    employee = relationship("User", foreign_keys=[employee_id])
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

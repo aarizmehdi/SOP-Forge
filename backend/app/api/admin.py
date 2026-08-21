@@ -1,14 +1,14 @@
 """
-SOP Forge — Admin API router.
+SOP Forge — Admin API router (MongoDB).
 SOP document CRUD for the no-code policy management interface.
 """
 
 import logging
 from uuid import UUID
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select, func
-from sqlalchemy.ext.asyncio import AsyncSession
+from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.auth.rbac import require_admin
 from app.database import get_db
@@ -35,7 +35,7 @@ router = APIRouter(prefix="/api/admin", tags=["Admin"])
 @router.get("/sop", response_model=list[SOPDocumentListItem])
 async def list_sop_documents(
     active_only: bool = True,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncIOMotorDatabase = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
     """List all SOP documents."""
@@ -46,22 +46,19 @@ async def list_sop_documents(
 @router.post("/sop", response_model=SOPDocumentResponse, status_code=status.HTTP_201_CREATED)
 async def create_sop_document(
     doc: SOPDocumentCreate,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncIOMotorDatabase = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
-    """Create a new SOP document — auto-embeds into pgvector."""
+    """Create a new SOP document — auto-embeds into DB."""
     document = await ingest_sop_document(
         db,
         title=doc.title,
         category=doc.category,
         content_text=doc.content_text,
-        created_by=current_user.id,
+        created_by=str(current_user.id),
     )
 
-    # Get chunk count
-    chunk_count = await db.scalar(
-        select(func.count(SOPChunk.id)).where(SOPChunk.document_id == document.id)
-    )
+    chunk_count = await db.sop_chunks.count_documents({"document_id": document.id})
 
     return SOPDocumentResponse(
         id=document.id,
@@ -79,20 +76,16 @@ async def create_sop_document(
 @router.get("/sop/{document_id}", response_model=SOPDocumentResponse)
 async def get_sop_document(
     document_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncIOMotorDatabase = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
     """Get a specific SOP document with chunk count."""
-    result = await db.execute(
-        select(SOPDocument).where(SOPDocument.id == document_id)
-    )
-    document = result.scalar_one_or_none()
-    if document is None:
+    doc_dict = await db.sop_documents.find_one({"id": str(document_id)})
+    if doc_dict is None:
         raise HTTPException(status_code=404, detail="SOP document not found")
 
-    chunk_count = await db.scalar(
-        select(func.count(SOPChunk.id)).where(SOPChunk.document_id == document.id)
-    )
+    document = SOPDocument(**doc_dict)
+    chunk_count = await db.sop_chunks.count_documents({"document_id": document.id})
 
     return SOPDocumentResponse(
         id=document.id,
@@ -111,14 +104,14 @@ async def get_sop_document(
 async def update_sop(
     document_id: UUID,
     update: SOPDocumentUpdate,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncIOMotorDatabase = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
     """Update an SOP document. If content changes, triggers re-embedding."""
     try:
         document = await update_sop_document(
             db,
-            document_id,
+            str(document_id),
             title=update.title,
             category=update.category,
             content_text=update.content_text,
@@ -126,9 +119,7 @@ async def update_sop(
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
-    chunk_count = await db.scalar(
-        select(func.count(SOPChunk.id)).where(SOPChunk.document_id == document.id)
-    )
+    chunk_count = await db.sop_chunks.count_documents({"document_id": document.id})
 
     return SOPDocumentResponse(
         id=document.id,
@@ -146,31 +137,31 @@ async def update_sop(
 @router.delete("/sop/{document_id}")
 async def deactivate_sop(
     document_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncIOMotorDatabase = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
     """Soft-delete (deactivate) an SOP document."""
-    result = await db.execute(
-        select(SOPDocument).where(SOPDocument.id == document_id)
-    )
-    document = result.scalar_one_or_none()
-    if document is None:
+    doc_id = str(document_id)
+    doc_dict = await db.sop_documents.find_one({"id": doc_id})
+    if doc_dict is None:
         raise HTTPException(status_code=404, detail="SOP document not found")
 
-    document.is_active = False
-    await db.flush()
+    await db.sop_documents.update_one(
+        {"id": doc_id},
+        {"$set": {"is_active": False, "updated_at": datetime.now(timezone.utc)}}
+    )
 
-    return {"status": "success", "message": f"SOP '{document.title}' deactivated"}
+    return {"status": "success", "message": f"SOP '{doc_dict.get('title')}' deactivated"}
 
 
 @router.get("/sop/{document_id}/chunks", response_model=list[SOPChunkResponse])
 async def get_sop_chunks(
     document_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncIOMotorDatabase = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
     """View embedded chunks for a document."""
-    chunks = await get_document_chunks(db, document_id)
+    chunks = await get_document_chunks(db, str(document_id))
 
     return [
         SOPChunkResponse(
@@ -178,7 +169,7 @@ async def get_sop_chunks(
             chunk_text=chunk.chunk_text,
             chunk_index=chunk.chunk_index,
             has_embedding=chunk.embedding is not None,
-            metadata=chunk.extra_metadata,
+            metadata=chunk.metadata,
         )
         for chunk in chunks
     ]
