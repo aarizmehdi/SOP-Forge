@@ -62,9 +62,10 @@ def get_mongodb_client() -> AsyncIOMotorClient:
 async def get_db() -> AsyncGenerator[AsyncIOMotorDatabase, None]:
     """FastAPI dependency that yields the async MongoDB database instance."""
     client = get_mongodb_client()
-    db = client.get_database() # Uses the DB name specified in the URI (e.g. /sopforge)
-    # If no DB specified in URI, default to sopforge
-    if not db.name:
+    try:
+        db = client.get_default_database()
+    except Exception:
+        # If no DB specified in URI, default to sopforge
         db = client["sopforge"]
     yield db
 

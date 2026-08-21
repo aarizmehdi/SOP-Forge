@@ -17,8 +17,9 @@ DEFAULT_PASSWORD = "password123"
 async def init_prod_db():
     print("Checking database status...")
     client = get_mongodb_client()
-    db = client.get_database()
-    if not db.name:
+    try:
+        db = client.get_default_database()
+    except Exception:
         db = client["sopforge"]
 
     # Check if users already exist

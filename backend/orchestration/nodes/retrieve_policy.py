@@ -45,8 +45,9 @@ async def retrieve_policy(state: RequestState) -> dict:
         from app.database import get_mongodb_client
 
         client = get_mongodb_client()
-        db = client.get_database()
-        if not db.name:
+        try:
+            db = client.get_default_database()
+        except Exception:
             db = client["sopforge"]
 
         results = await search_policy(

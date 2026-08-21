@@ -43,8 +43,9 @@ async def audit_log(state: RequestState) -> dict:
             event_type = AuditEventType.AI_EVALUATED
 
         client = get_mongodb_client()
-        db = client.get_database()
-        if not db.name:
+        try:
+            db = client.get_default_database()
+        except Exception:
             db = client["sopforge"]
 
         try:

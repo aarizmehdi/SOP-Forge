@@ -47,8 +47,9 @@ async def _run_ai_workflow(request_id: str, employee_id: str, employee_code: str
 
         # Update the request with AI results
         client = get_mongodb_client()
-        db = client.get_database()
-        if not db.name:
+        try:
+            db = client.get_default_database()
+        except Exception:
             db = client["sopforge"]
 
         req_doc = await db.sop_requests.find_one({"id": request_id})
