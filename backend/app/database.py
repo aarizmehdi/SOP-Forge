@@ -52,7 +52,7 @@ def get_mongodb_client() -> AsyncIOMotorClient:
     if mongodb_client is None:
         # Use tlsAllowInvalidCertificates if running locally or avoiding cert issues
         mongodb_client = motor.motor_asyncio.AsyncIOMotorClient(
-            settings.mongo_uri, 
+            settings.database_url, 
             serverSelectionTimeoutMS=5000,
             tlsAllowInvalidCertificates=True 
         )
