@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     )
 
     # ── Database ──
-    database_url: str = "mongodb://localhost:27017/sopforge"
+    mongo_uri: str = "mongodb://localhost:27017/sopforge"
 
     # ── Redis ──
     redis_url: str = "redis://localhost:6379/0"
