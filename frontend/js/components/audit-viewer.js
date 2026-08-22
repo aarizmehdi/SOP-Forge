@@ -23,9 +23,12 @@ const AuditViewer = (() => {
             </div>
 
             <div id="audit-summary" class="stats-grid" style="margin-bottom:var(--space-lg)">
-                <div class="skeleton skeleton-card" style="height:100px"></div>
-                <div class="skeleton skeleton-card" style="height:100px"></div>
-                <div class="skeleton skeleton-card" style="height:100px"></div>
+                ${[1,2,3].map(() => `
+                    <div class="card stat-card" style="padding:16px">
+                        <div class="skeleton skeleton-text" style="width:30px;height:24px;margin-bottom:8px"></div>
+                        <div class="skeleton skeleton-text" style="width:60%;height:10px;margin-bottom:0"></div>
+                    </div>
+                `).join('')}
             </div>
 
             <div class="card animate-slide-up">
@@ -48,9 +51,31 @@ const AuditViewer = (() => {
                     </div>
                 </div>
                 <div id="audit-table">
-                    <div class="skeleton skeleton-text" style="width:100%"></div>
-                    <div class="skeleton skeleton-text" style="width:90%"></div>
-                    <div class="skeleton skeleton-text" style="width:85%"></div>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th><div class="skeleton skeleton-text" style="width:80px"></div></th>
+                                <th><div class="skeleton skeleton-text" style="width:100px"></div></th>
+                                <th><div class="skeleton skeleton-text" style="width:60px"></div></th>
+                                <th><div class="skeleton skeleton-text" style="width:70px"></div></th>
+                                <th><div class="skeleton skeleton-text" style="width:50px"></div></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${[1,2,3,4,5].map(() => `
+                                <tr>
+                                    <td><div class="skeleton skeleton-text" style="width:120px;height:24px;border-radius:12px"></div></td>
+                                    <td><div class="skeleton skeleton-text" style="width:80px;height:12px"></div></td>
+                                    <td>
+                                        <div class="skeleton skeleton-text" style="width:100px;margin-bottom:4px"></div>
+                                        <div class="skeleton skeleton-text" style="width:60px;margin-bottom:0"></div>
+                                    </td>
+                                    <td><div class="skeleton skeleton-text" style="width:120px;height:12px"></div></td>
+                                    <td><div class="skeleton skeleton-text" style="width:80px;height:28px;border-radius:6px"></div></td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
                 </div>
             </div>
         `;

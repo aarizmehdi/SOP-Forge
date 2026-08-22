@@ -19,9 +19,16 @@ const MyRequests = (() => {
                 </div>
             </div>
             <div id="my-requests-list">
-                <div class="skeleton skeleton-card" style="height:80px;margin-bottom:8px"></div>
-                <div class="skeleton skeleton-card" style="height:80px;margin-bottom:8px"></div>
-                <div class="skeleton skeleton-card" style="height:80px"></div>
+                ${[1,2,3].map(() => `
+                    <div class="card animate-slide-up" style="margin-bottom:var(--space-md);display:flex;justify-content:space-between;align-items:center;padding:16px 20px">
+                        <div style="display:flex;flex-direction:column;gap:6px;width:70%">
+                            <div class="skeleton skeleton-text" style="width:40%;height:14px;margin-bottom:4px"></div>
+                            <div class="skeleton skeleton-text" style="width:60%;height:10px;margin-bottom:4px"></div>
+                            <div class="skeleton skeleton-text" style="width:20%;height:10px"></div>
+                        </div>
+                        <div class="skeleton skeleton-avatar" style="width:70px;height:24px;border-radius:12px"></div>
+                    </div>
+                `).join('')}
             </div>
         `;
         loadRequests();

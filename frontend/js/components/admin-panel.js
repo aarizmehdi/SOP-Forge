@@ -24,9 +24,26 @@ const AdminPanel = (() => {
             
             <div id="admin-content" style="position:relative">
                 <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(320px, 1fr));gap:24px;">
-                    <div class="skeleton skeleton-card" style="height:200px"></div>
-                    <div class="skeleton skeleton-card" style="height:200px"></div>
-                    <div class="skeleton skeleton-card" style="height:200px"></div>
+                    ${[1,2,3].map(() => `
+                        <div class="card" style="display:flex;flex-direction:column;border:1px solid var(--border-default);background:var(--bg-secondary);border-radius:16px;overflow:hidden;height:240px">
+                            <div style="height:4px;width:100%;background:var(--bg-tertiary)"></div>
+                            <div style="padding:24px;flex:1;display:flex;flex-direction:column">
+                                <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px">
+                                    <div class="skeleton skeleton-avatar" style="width:48px;height:48px;border-radius:12px"></div>
+                                    <div class="skeleton skeleton-text" style="width:60px;height:20px;border-radius:10px"></div>
+                                </div>
+                                <div class="skeleton skeleton-text" style="width:70%;height:20px;margin-bottom:12px"></div>
+                                <div style="display:flex;gap:8px;margin-bottom:24px">
+                                    <div class="skeleton skeleton-text" style="width:60px;height:16px;border-radius:4px;margin-bottom:0"></div>
+                                    <div class="skeleton skeleton-text" style="width:80px;height:16px;border-radius:4px;margin-bottom:0"></div>
+                                </div>
+                            </div>
+                            <div style="border-top:1px solid var(--border-subtle);background:var(--bg-tertiary);display:grid;grid-template-columns:1fr 1fr;height:48px">
+                                <div style="border-right:1px solid var(--border-subtle)"></div>
+                                <div></div>
+                            </div>
+                        </div>
+                    `).join('')}
                 </div>
             </div>
         `;

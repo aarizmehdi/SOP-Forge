@@ -31,10 +31,16 @@ const Dashboard = (() => {
             </div>
 
             <div id="exec-stats-grid" class="stats-grid" style="margin-bottom:var(--space-xl)">
-                <div class="card stat-card skeleton skeleton-card"></div>
-                <div class="card stat-card skeleton skeleton-card"></div>
-                <div class="card stat-card skeleton skeleton-card"></div>
-                <div class="card stat-card skeleton skeleton-card"></div>
+                ${[1,2,3,4].map(() => `
+                    <div class="card stat-card" style="border-top:3px solid transparent">
+                        <div class="card-header" style="margin-bottom:8px">
+                            <div class="skeleton skeleton-avatar" style="width:36px;height:36px;border-radius:8px"></div>
+                        </div>
+                        <div class="skeleton skeleton-text" style="width:40%;height:10px;margin-bottom:12px"></div>
+                        <div class="skeleton skeleton-text" style="width:30%;height:32px;margin-bottom:8px"></div>
+                        <div class="skeleton skeleton-text" style="width:80%;height:10px"></div>
+                    </div>
+                `).join('')}
             </div>
 
             <div class="card animate-slide-up" style="animation-delay: 0.2s">
@@ -43,9 +49,29 @@ const Dashboard = (() => {
                     <span style="font-size:var(--text-xs);color:var(--text-tertiary)">Live audit trail of AI and Manager decisions</span>
                 </div>
                 <div id="exec-audit-table">
-                    <div class="skeleton skeleton-text" style="width:80%"></div>
-                    <div class="skeleton skeleton-text" style="width:60%"></div>
-                    <div class="skeleton skeleton-text" style="width:70%"></div>
+                    <table class="table" style="width:100%;text-align:left;border-collapse:collapse;">
+                        <thead>
+                            <tr style="border-bottom:1px solid var(--border-subtle)">
+                                <th style="padding:12px 16px"><div class="skeleton skeleton-text" style="width:40px"></div></th>
+                                <th style="padding:12px 16px"><div class="skeleton skeleton-text" style="width:80px"></div></th>
+                                <th style="padding:12px 16px"><div class="skeleton skeleton-text" style="width:60px"></div></th>
+                                <th style="padding:12px 16px"><div class="skeleton skeleton-text" style="width:120px"></div></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${[1,2,3].map(() => `
+                                <tr>
+                                    <td style="padding:12px 16px"><div class="skeleton skeleton-text" style="width:50px"></div></td>
+                                    <td style="padding:12px 16px"><div class="skeleton skeleton-text" style="width:100px;height:20px;border-radius:4px"></div></td>
+                                    <td style="padding:12px 16px">
+                                        <div class="skeleton skeleton-text" style="width:90px"></div>
+                                        <div class="skeleton skeleton-text" style="width:50px;margin-bottom:0"></div>
+                                    </td>
+                                    <td style="padding:12px 16px"><div class="skeleton skeleton-text" style="width:80%"></div></td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
                 </div>
             </div>
         `;
@@ -193,8 +219,16 @@ const Dashboard = (() => {
             </div>
 
             <div id="dashboard-stats" class="stats-grid" style="margin-bottom:var(--space-xl)">
-                <div class="card stat-card skeleton skeleton-card"></div>
-                <div class="card stat-card skeleton skeleton-card"></div>
+                ${[1,2].map(() => `
+                    <div class="card stat-card">
+                        <div class="card-header" style="margin-bottom:8px">
+                            <div class="skeleton skeleton-avatar" style="width:36px;height:36px;border-radius:8px"></div>
+                        </div>
+                        <div class="skeleton skeleton-text" style="width:20%;height:28px;margin-bottom:8px"></div>
+                        <div class="skeleton skeleton-text" style="width:50%;height:12px;margin-bottom:8px"></div>
+                        <div class="skeleton skeleton-text" style="width:40%;height:10px"></div>
+                    </div>
+                `).join('')}
             </div>
 
             <div class="card animate-slide-up" style="animation-delay: 0.2s">
@@ -203,9 +237,27 @@ const Dashboard = (() => {
                     <span style="font-size:var(--text-xs);color:var(--text-tertiary)">Requests escalated to you for manual review</span>
                 </div>
                 <div id="recent-requests-table">
-                    <div class="skeleton skeleton-text" style="width:80%"></div>
-                    <div class="skeleton skeleton-text" style="width:60%"></div>
-                    <div class="skeleton skeleton-text" style="width:70%"></div>
+                    <table class="table" style="width:100%;text-align:left;border-collapse:collapse;">
+                        <thead>
+                            <tr style="border-bottom:1px solid var(--border-subtle)">
+                                <th style="padding:12px 16px"><div class="skeleton skeleton-text" style="width:60px"></div></th>
+                                <th style="padding:12px 16px"><div class="skeleton skeleton-text" style="width:90px"></div></th>
+                                <th style="padding:12px 16px"><div class="skeleton skeleton-text" style="width:50px"></div></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${[1,2,3].map(() => `
+                                <tr>
+                                    <td style="padding:12px 16px">
+                                        <div class="skeleton skeleton-text" style="width:100px"></div>
+                                        <div class="skeleton skeleton-text" style="width:60px;margin-bottom:0"></div>
+                                    </td>
+                                    <td style="padding:12px 16px"><div class="skeleton skeleton-text" style="width:120px"></div></td>
+                                    <td style="padding:12px 16px"><div class="skeleton skeleton-text" style="width:80px;height:20px;border-radius:4px"></div></td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
                 </div>
             </div>
         `;

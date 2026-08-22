@@ -13,8 +13,38 @@ const ReviewPanel = (() => {
                 <p class="page-subtitle">Escalated requests awaiting your decision</p>
             </div>
             <div id="review-list">
-                <div class="skeleton skeleton-card" style="height:200px;margin-bottom:16px"></div>
-                <div class="skeleton skeleton-card" style="height:200px"></div>
+                ${[1,2].map(() => `
+                    <div class="card animate-slide-up" style="margin-bottom:var(--space-xl)">
+                        <div class="card-header" style="border-bottom:1px solid var(--border-subtle);padding-bottom:16px;margin-bottom:16px;display:flex;justify-content:space-between">
+                            <div style="display:flex;align-items:center;gap:12px">
+                                <div class="skeleton skeleton-avatar"></div>
+                                <div>
+                                    <div class="skeleton skeleton-text" style="width:120px;margin-bottom:4px"></div>
+                                    <div class="skeleton skeleton-text" style="width:80px;height:10px;margin-bottom:0"></div>
+                                </div>
+                            </div>
+                            <div class="skeleton skeleton-text" style="width:100px;height:24px;border-radius:12px"></div>
+                        </div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:24px">
+                            <div>
+                                <div class="skeleton skeleton-text" style="width:60px;height:10px;margin-bottom:12px"></div>
+                                <div class="skeleton skeleton-text" style="width:100%"></div>
+                                <div class="skeleton skeleton-text" style="width:80%"></div>
+                                <div class="skeleton skeleton-text" style="width:90%"></div>
+                            </div>
+                            <div style="background:var(--bg-tertiary);border-radius:12px;padding:16px;border:1px solid var(--border-subtle)">
+                                <div class="skeleton skeleton-text" style="width:100px;height:12px;margin-bottom:16px"></div>
+                                <div class="skeleton skeleton-text" style="width:100%"></div>
+                                <div class="skeleton skeleton-text" style="width:70%"></div>
+                            </div>
+                        </div>
+                        <div style="display:flex;gap:12px;justify-content:flex-end;border-top:1px solid var(--border-subtle);padding-top:16px">
+                            <div class="skeleton skeleton-text" style="width:100px;height:36px;border-radius:6px;margin-bottom:0"></div>
+                            <div class="skeleton skeleton-text" style="width:100px;height:36px;border-radius:6px;margin-bottom:0"></div>
+                            <div class="skeleton skeleton-text" style="width:100px;height:36px;border-radius:6px;margin-bottom:0"></div>
+                        </div>
+                    </div>
+                `).join('')}
             </div>
         `;
         loadPendingReviews();

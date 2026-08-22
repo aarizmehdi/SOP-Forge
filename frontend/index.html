@@ -15,16 +15,22 @@
     <link rel="stylesheet" href="index.css?v=8">
 </head>
 <body>
-    <!-- ── Login Screen ── -->
+    <!-- ── Login Screen (10x UI) ── -->
     <div id="login-screen" class="screen active">
         <div class="login-container">
             <div class="login-brand">
                 <div class="brand-icon">
-                    <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-                        <rect width="48" height="48" rx="12" fill="#18181b" stroke="#27272a"/>
-                        <path d="M14 16h20M14 24h16M14 32h12" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
-                        <circle cx="36" cy="32" r="6" fill="rgba(255,255,255,0.3)" stroke="white" stroke-width="1.5"/>
-                        <path d="M34 32l1.5 1.5L38 31" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    <svg width="64" height="64" viewBox="0 0 48 48" fill="none">
+                        <rect width="48" height="48" rx="16" fill="rgba(24, 24, 27, 0.8)" stroke="rgba(255,255,255,0.1)" stroke-width="1.5"/>
+                        <path d="M14 16h20M14 24h16M14 32h12" stroke="url(#paint0_linear)" stroke-width="2.5" stroke-linecap="round"/>
+                        <circle cx="36" cy="32" r="6" fill="rgba(56, 189, 248, 0.2)" stroke="#38bdf8" stroke-width="1.5"/>
+                        <path d="M34 32l1.5 1.5L38 31" stroke="#38bdf8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        <defs>
+                            <linearGradient id="paint0_linear" x1="14" y1="16" x2="34" y2="32" gradientUnits="userSpaceOnUse">
+                                <stop stop-color="#ffffff"/>
+                                <stop offset="1" stop-color="#a1a1aa"/>
+                            </linearGradient>
+                        </defs>
                     </svg>
                 </div>
                 <h1 class="brand-name">SOP Forge</h1>
@@ -34,14 +40,14 @@
             <form id="login-form" class="login-form">
                 <div class="form-group">
                     <label for="login-email">Email Address</label>
-                    <input type="email" id="login-email" placeholder="name@company.com" required>
+                    <input type="email" id="login-email" placeholder="name@company.com" required style="font-size: 15px; padding: 12px 16px;">
                 </div>
-                <div class="form-group">
+                <div class="form-group" style="margin-bottom: 24px;">
                     <label for="login-password">Password</label>
-                    <input type="password" id="login-password" placeholder="Enter password" required>
+                    <input type="password" id="login-password" placeholder="Enter password" required style="font-size: 15px; padding: 12px 16px;">
                 </div>
-                <button type="submit" id="login-btn" class="btn btn-primary btn-full">
-                    <span class="btn-text">Sign In</span>
+                <button type="submit" id="login-btn" class="btn btn-primary btn-full" style="padding: 12px; font-size: 15px; border-radius: 8px;">
+                    <span class="btn-text">Sign In securely</span>
                     <span class="btn-loader" style="display:none;">
                         <span class="spinner"></span>
                     </span>
@@ -50,12 +56,24 @@
             </form>
 
             <div class="login-hint">
-                <p>Demo accounts (password: <code>password123</code>):</p>
+                <p>One-Click Demo Accounts</p>
                 <div class="hint-accounts">
-                    <button class="hint-chip" data-email="aisha.khan@company.com" onclick="fillLogin(this)">Employee</button>
-                    <button class="hint-chip" data-email="bilal.hussain@company.com" onclick="fillLogin(this)">Manager</button>
-                    <button class="hint-chip" data-email="tariq.rashid@company.com" onclick="fillLogin(this)">Executive</button>
-                    <button class="hint-chip" data-email="nadia.bukhari@company.com" onclick="fillLogin(this)">Admin</button>
+                    <button class="hint-chip" data-email="aisha.khan@company.com" onclick="fillLogin(this)">
+                        <div style="width:20px;height:20px;border-radius:50%;background:#3b82f6;display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:700">AK</div>
+                        Employee
+                    </button>
+                    <button class="hint-chip" data-email="bilal.hussain@company.com" onclick="fillLogin(this)">
+                        <div style="width:20px;height:20px;border-radius:50%;background:#f59e0b;display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:700">BH</div>
+                        Manager
+                    </button>
+                    <button class="hint-chip" data-email="tariq.rashid@company.com" onclick="fillLogin(this)">
+                        <div style="width:20px;height:20px;border-radius:50%;background:#8b5cf6;display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:700">TR</div>
+                        Executive
+                    </button>
+                    <button class="hint-chip" data-email="nadia.bukhari@company.com" onclick="fillLogin(this)">
+                        <div style="width:20px;height:20px;border-radius:50%;background:#10b981;display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:700">NB</div>
+                        Admin
+                    </button>
                 </div>
             </div>
         </div>
