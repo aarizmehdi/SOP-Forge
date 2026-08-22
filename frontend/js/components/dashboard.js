@@ -168,38 +168,48 @@ const Dashboard = (() => {
             if (log.event_type === 'AUTO_REJECTED' || log.event_type === 'DECLINED') { actionColor = 'var(--status-escalated)'; bgColor = 'var(--status-escalated-bg)'; }
 
             return `
-                <tr class="table-row-hover" onclick="window.location.hash='#/audit'" style="cursor:pointer;">
-                    <td style="color:var(--text-tertiary); font-size:var(--text-xs);">${date}</td>
-                    <td>
-                        <span style="color:${actionColor}; font-weight:600; font-size:var(--text-xs); background:${bgColor}; padding: 4px 8px; border-radius: 4px;">
+                <tr class="table-row-hover" onclick="window.location.hash='#/audit'" style="cursor:pointer; border-bottom:1px solid rgba(255,255,255,0.03);">
+                    <td style="padding: 16px; color:var(--text-tertiary); font-size:var(--text-sm); font-weight:500;">
+                        ${date}
+                    </td>
+                    <td style="padding: 16px;">
+                        <span style="display:inline-flex; align-items:center; color:${actionColor}; font-weight:600; font-size:12px; background:${bgColor}; padding: 6px 12px; border-radius: 6px; letter-spacing:0.5px; text-transform:uppercase;">
                             ${log.event_type.replace('_', ' ')}
                         </span>
                     </td>
-                    <td>
-                        <div style="font-size:var(--text-sm);">${log.actor_name || 'AI Engine'}</div>
-                        <div style="font-size:var(--text-xs);color:var(--text-tertiary)">${log.actor_role || 'System'}</div>
+                    <td style="padding: 16px;">
+                        <div style="font-size:var(--text-base); font-weight:500; color:var(--text-primary); margin-bottom:2px;">
+                            ${log.actor_name || 'AI Engine'}
+                        </div>
+                        <div style="font-size:12px; color:var(--text-tertiary); font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">
+                            ${log.actor_role || 'System'}
+                        </div>
                     </td>
-                    <td style="font-size:var(--text-xs); max-width:250px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-                        ${log.evaluation_reasoning || 'No details provided'}
+                    <td style="padding: 16px; font-size:var(--text-sm); color:var(--text-secondary); max-width:250px;">
+                        <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                            ${log.evaluation_reasoning || 'No details provided'}
+                        </div>
                     </td>
                 </tr>
             `;
         }).join('');
 
         container.innerHTML = `
-            <table class="table" style="width:100%;text-align:left;border-collapse:collapse;">
-                <thead>
-                    <tr style="border-bottom:1px solid var(--border-subtle);color:var(--text-secondary);font-size:var(--text-xs);text-transform:uppercase;">
-                        <th style="padding:12px 16px;font-weight:500;">Time</th>
-                        <th style="padding:12px 16px;font-weight:500;">Action Event</th>
-                        <th style="padding:12px 16px;font-weight:500;">Actor</th>
-                        <th style="padding:12px 16px;font-weight:500;">System Reasoning</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${rows}
-                </tbody>
-            </table>
+            <div style="overflow-x:auto;">
+                <table class="table" style="width:100%;text-align:left;border-collapse:collapse;">
+                    <thead>
+                        <tr style="border-bottom:1px solid rgba(255,255,255,0.08);color:var(--text-secondary);font-size:11px;text-transform:uppercase;letter-spacing:1px;">
+                            <th style="padding:16px;font-weight:600;width:15%;">Time</th>
+                            <th style="padding:16px;font-weight:600;width:25%;">Action Event</th>
+                            <th style="padding:16px;font-weight:600;width:25%;">Actor</th>
+                            <th style="padding:16px;font-weight:600;width:35%;">System Reasoning</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows}
+                    </tbody>
+                </table>
+            </div>
         `;
     }
 
