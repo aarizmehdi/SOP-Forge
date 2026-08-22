@@ -73,10 +73,10 @@ const AdminPanel = (() => {
 
         if (!documents.length) {
             contentEl.innerHTML = `
-                <div class="empty-state" style="padding:60px 20px;text-align:center;border:1px dashed var(--border-default);border-radius:16px">
-                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" stroke-width="1.5" style="margin-bottom:16px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                    <h3 style="margin-bottom:8px;font-size:18px;color:var(--text-secondary)">No SOP configurations found</h3>
-                    <p style="color:var(--text-tertiary);font-size:14px;margin-bottom:24px">Create your first policy to configure the AI Brain.</p>
+                <div class="empty-state">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    <h3>No SOP configurations found</h3>
+                    <p>Create your first policy to configure the AI Brain.</p>
                     <button class="btn btn-primary" onclick="AdminPanel.showCreateForm()">Deploy First Policy</button>
                 </div>
             `;

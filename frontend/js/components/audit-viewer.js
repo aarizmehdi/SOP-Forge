@@ -128,7 +128,15 @@ const AuditViewer = (() => {
         const tableEl = document.getElementById('audit-table');
 
         if (!logs.length) {
-            tableEl.innerHTML = `<div class="empty-state"><h3>No audit entries found</h3><p>Try adjusting your filters.</p></div>`;
+            tableEl.innerHTML = `
+                <div class="empty-state">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                    </svg>
+                    <h3>No audit entries found</h3>
+                    <p>Try adjusting your filters.</p>
+                </div>
+            `;
             return;
         }
 

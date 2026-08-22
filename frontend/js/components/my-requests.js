@@ -49,12 +49,12 @@ const MyRequests = (() => {
     function renderList(container, requests) {
         if (!requests.length) {
             container.innerHTML = `
-                <div style="text-align:center;padding:60px 20px;color:var(--text-tertiary)">
-                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom:16px;opacity:0.5">
+                <div class="empty-state">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
                     </svg>
-                    <h3 style="color:var(--text-secondary);margin-bottom:4px">No requests yet</h3>
-                    <p style="font-size:var(--text-xs)">Submit your first request to get started.</p>
+                    <h3>No requests yet</h3>
+                    <p>Submit your first request to get started.</p>
                     <a href="#/request/new" class="btn btn-primary btn-sm" style="margin-top:16px">Submit a Request</a>
                 </div>
             `;
