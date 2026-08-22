@@ -23,13 +23,20 @@ async def get_audit_logs(
     event_type: AuditEventType | None = None,
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
+    days: int | None = Query(default=None, ge=1),
     db: AsyncIOMotorDatabase = Depends(get_db),
     current_user: User = Depends(require_manager),
 ):
     """Query the audit trail with filters. Read-only."""
+    date_from = None
+    if days is not None:
+        from datetime import datetime, timezone, timedelta
+        date_from = datetime.now(timezone.utc) - timedelta(days=days)
+
     query = AuditLogQuery(
         request_id=request_id,
         event_type=event_type,
+        date_from=date_from,
         limit=limit,
         offset=offset,
     )
