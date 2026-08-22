@@ -29,8 +29,8 @@ const AuditViewer = (() => {
             </div>
 
             <div class="card animate-slide-up">
-                <div class="action-bar" style="margin-bottom:var(--space-md);justify-content:space-between">
-                    <div class="action-bar-group" id="event-filters">
+                <div style="display:flex; flex-wrap:wrap; gap:16px; margin-bottom:var(--space-md); justify-content:space-between; align-items:center;">
+                    <div class="action-bar-group" id="event-filters" style="display:flex; flex-wrap:wrap; gap:8px;">
                         <button class="filter-chip active" onclick="AuditViewer.filterEvent('all', this)">All Events</button>
                         <button class="filter-chip" onclick="AuditViewer.filterEvent('auto_approved', this)">Auto-Approved</button>
                         <button class="filter-chip" onclick="AuditViewer.filterEvent('auto_rejected', this)">Auto-Rejected</button>
