@@ -1513,6 +1513,8 @@ code {
         border-right: none;
         border-top: 1px solid var(--border-subtle);
         flex-direction: row;
+        justify-content: space-evenly;
+        align-items: center;
         z-index: 1000;
     }
     
@@ -1521,7 +1523,7 @@ code {
     }
     
     .sidebar-footer {
-        padding: 0 12px;
+        padding: 0 8px;
         border: none;
         display: flex;
         align-items: center;
@@ -1529,17 +1531,13 @@ code {
     }
     
     .sidebar-nav {
-        flex-direction: row;
-        justify-content: space-around;
-        align-items: center;
-        padding: 0;
-        gap: 0;
-        overflow: hidden;
+        display: contents;
     }
     
     .nav-item {
         flex-direction: column;
         justify-content: center;
+        align-items: center;
         gap: 4px;
         padding: 8px;
         border-radius: 0;
@@ -1612,7 +1610,12 @@ code {
     }
     
     /* Tables */
-    .table-responsive {
+    .table-responsive,
+    #audit-table-container,
+    #recent-requests-table,
+    #exec-audit-table,
+    #my-requests-table,
+    #incidents-table-container {
         width: 100%;
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
