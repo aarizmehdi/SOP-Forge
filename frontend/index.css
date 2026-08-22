@@ -1499,3 +1499,127 @@ code {
     margin-bottom: 24px;
     max-width: 400px;
 }
+
+/* ==========================================================================
+   MOBILE RESPONSIVENESS
+   ========================================================================== */
+@media (max-width: 768px) {
+    /* Main Layout */
+    .sidebar {
+        top: auto;
+        bottom: 0;
+        width: 100%;
+        height: 65px;
+        border-right: none;
+        border-top: 1px solid var(--border-subtle);
+        flex-direction: row;
+        z-index: 1000;
+    }
+    
+    .sidebar-brand, .sidebar-footer {
+        display: none !important;
+    }
+    
+    .sidebar-nav {
+        flex-direction: row;
+        justify-content: space-around;
+        align-items: center;
+        padding: 0;
+        gap: 0;
+        overflow: hidden;
+    }
+    
+    .nav-item {
+        flex-direction: column;
+        justify-content: center;
+        gap: 4px;
+        padding: 8px;
+        border-radius: 0;
+        flex: 1;
+        border: none !important;
+    }
+    
+    .nav-item span:not(.nav-badge) {
+        display: none;
+    }
+    
+    .nav-item.active::before {
+        display: none;
+    }
+    
+    .nav-item.active {
+        color: var(--primary-500);
+        background: transparent;
+    }
+    
+    .nav-item.active svg {
+        stroke: var(--primary-500);
+    }
+    
+    .nav-badge {
+        position: absolute;
+        top: 4px;
+        right: 50%;
+        transform: translateX(12px);
+        margin: 0;
+        font-size: 9px;
+        padding: 1px 4px;
+    }
+    
+    .main-content {
+        margin-left: 0;
+        width: 100%;
+        padding: var(--space-md);
+        padding-bottom: 80px; /* Space for bottom nav */
+    }
+    
+    /* Login Screen */
+    .login-container {
+        padding: var(--space-md);
+    }
+    
+    .hint-accounts {
+        grid-template-columns: 1fr;
+    }
+    
+    /* Grids & Typography */
+    .stats-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .form-row {
+        grid-template-columns: 1fr;
+    }
+    
+    .page-title {
+        font-size: var(--text-lg);
+    }
+    
+    .card-value {
+        font-size: var(--text-xl);
+    }
+    
+    .card {
+        padding: var(--space-md);
+    }
+    
+    /* Tables */
+    .table-responsive {
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    .data-table th, .data-table td, .table th, .table td {
+        white-space: nowrap;
+    }
+    
+    /* Chat Interface */
+    .ca-layout {
+        height: calc(100vh - 65px - (var(--space-md) * 2));
+    }
+    
+    .ca-input-bar {
+        padding-bottom: 12px;
+    }
+}
