@@ -43,6 +43,7 @@ class EscalatedRequestItem(BaseModel):
     status: RequestStatus
     sla_deadline: datetime | None
     sla_remaining_minutes: int | None
+    override_log: list[dict] | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

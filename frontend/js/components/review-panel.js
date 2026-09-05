@@ -151,6 +151,17 @@ const ReviewPanel = (() => {
                     </div>
                 ` : ''}
 
+                <!-- Override Log Audit if available -->
+                ${req.override_log && req.override_log.length ? `
+                    <div style="margin-bottom:var(--space-md);background:rgba(234,179,8,0.06);border:1px solid rgba(234,179,8,0.25);border-radius:var(--radius-md);padding:10px 14px">
+                        <div style="font-size:11px;font-weight:700;color:var(--status-overridden);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">⚡ Executive Override Audit</div>
+                        <div style="font-size:var(--text-xs);color:var(--text-primary)">
+                            <strong>Overridden By:</strong> ${req.override_log[req.override_log.length - 1].by_name || 'Executive'}<br>
+                            <strong>Justification:</strong> ${req.override_log[req.override_log.length - 1].justification}
+                        </div>
+                    </div>
+                ` : ''}
+
                 <!-- Action Buttons -->
                 <div style="display:flex;gap:var(--space-sm);align-items:center;padding-top:var(--space-md);border-top:1px solid var(--border-subtle)">
                     ${!isResolved ? `
@@ -169,7 +180,11 @@ const ReviewPanel = (() => {
                     ` : `
                         <span style="font-size:var(--text-xs);color:var(--text-tertiary)">Decision Recorded: <strong>${(req.ai_decision || req.status).toUpperCase()}</strong></span>
                     `}
-                    ${Auth.hasMinRole('executive') ? `
+                    ${req.status === 'overridden' ? `
+                        <span style="margin-left:auto;font-size:12px;font-weight:600;color:var(--status-overridden);background:rgba(234,179,8,0.15);padding:4px 10px;border-radius:6px;border:1px solid rgba(234,179,8,0.3)">
+                            ⚡ Executive Override Applied
+                        </span>
+                    ` : Auth.hasMinRole('executive') ? `
                         <button class="btn btn-ghost btn-sm" style="margin-left:auto;color:var(--status-escalated)" onclick="ReviewPanel.showOverrideModal('${req.id}')">
                             ⚡ Executive Override
                         </button>

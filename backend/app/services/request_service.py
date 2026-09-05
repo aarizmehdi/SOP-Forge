@@ -223,6 +223,9 @@ async def process_override(
     if sop_request is None:
         raise ValueError(f"Request {request_id_str} not found")
 
+    if sop_request.status == RequestStatus.OVERRIDDEN:
+        raise ValueError("This request has already been overridden by an executive and cannot be modified again.")
+
     previous_decision = sop_request.decision.value if sop_request.decision else None
 
     # Update request

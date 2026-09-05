@@ -73,6 +73,7 @@ async def get_pending_reviews(
             status=req.status,
             sla_deadline=req.sla_deadline,
             sla_remaining_minutes=sla_remaining,
+            override_log=req.override_log,
             created_at=req.created_at,
         ))
 
