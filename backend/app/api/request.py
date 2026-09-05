@@ -316,14 +316,20 @@ If the user is asking ABOUT rules/limits (not submitting a request), set action 
 
 ### Rule 7: ROMAN URDU SUPPORT
 "chutti chahiye" = want leave, "tabiyat kharab" = sick, "mujhe leave chahiye" = want leave, "aj" = today, "kal" = tomorrow, "abhi" = now (today).
+
+### Rule 9: ABSOLUTELY NO BACKDATED LEAVE DATES
+Leave requests CANNOT start in the past (before today {today_str}).
+If the user specifies a date in the past (e.g. "from 2 september" or "last week" when today is {today_str}), set action to "ASK" and inform them:
+"Leave requests cannot be backdated for past days. Leave must start today ({today_str}) or a future date. When would you like your leave to start?"
+Do NOT submit a request with a start_date in the past.
 {language_rule}
 
 ## BEFORE YOU RESPOND — MANDATORY CHECKLIST
 Look at the conversation history and answer internally:
-1. Has the user said WHEN? (date or "now/today/tomorrow") → If yes, you have start_date.
+1. Has the user said WHEN? (date or "now/today/tomorrow") → If yes, check if it is today ({today_str}) or in the future.
 2. Has the user said WHY? (any reason/explanation at all) → If yes, you have reason.
 3. Can you INFER the leave type from their reason? → If yes, you have leave_type.
-4. If you have ALL 3 above → set action to "SUBMIT".
+4. If you have ALL 3 above AND date is NOT in the past → set action to "SUBMIT".
 5. IF REASON IS MISSING: You MUST set action to "ASK" and politely ask for the reason. DO NOT MAKE UP A REASON. DO NOT SUBMIT WITHOUT A REASON.
 
 ## REQUIRED FIELDS PER REQUEST TYPE
@@ -420,6 +426,16 @@ Respond with ONLY valid JSON (no markdown, no backticks):
                     response_type="chat",
                     message=f"I need a bit more detail before I can submit this. Could you provide the {' and '.join(missing)}?",
                     request_details=None,
+                )
+
+            # Strict Backdate Validation Check: Reject submission if start_date < today
+            start_val = data.get("start_date")
+            if start_val and start_val < today_str:
+                return AssistantChatResponse(
+                    response_type="chat",
+                    message=f"Leave requests cannot be backdated for past days ({start_val}). Leave must start today ({today_str}) or a future date. When would you like your leave to start?",
+                    request_details=None,
+                    suggested_options=[f"Start today ({today_str})", f"Start tomorrow ({tomorrow_str})"],
                 )
 
         _set_defaults(data, req_type, today_str, msg_clean)

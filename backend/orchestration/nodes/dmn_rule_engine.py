@@ -108,27 +108,18 @@ def _evaluate_leave_dmn(submitted_data: dict, extracted: dict, live_data: dict, 
             "evaluation_reasoning": f"DMN Failure: Invalid calculated duration ({days_req} days). Escalated for human review."
         }
 
-    # Date bounds checks (Retrospective & Advanced Planning validation)
-    from datetime import timedelta
+    # STRICT ZERO BACKDATE RULE: start_date MUST be >= today
     today_dt = date.today()
+    if start_dt < today_dt:
+        return {
+            "dmn_result": False,
+            "decision": "rejected",
+            "status": "resolved",
+            "evaluation_reasoning": f"DMN Policy Rejection: Backdated leave requests are strictly prohibited. Requested start date '{start_str}' is in the past. Leave requests must start today ({today_dt.isoformat()}) or a future date."
+        }
 
-    # Rule 1: Backdated non-sick leave (annual, casual, unpaid) requires manager review
-    if submitted_category != "sick" and start_dt < today_dt:
-        passed = False
-        decision = "routed"
-        reasons.append(
-            f"Backdated leave rule: {submitted_category.capitalize()} leave starting in the past ({start_str}) requires manager approval and cannot be auto-approved."
-        )
-
-    # Rule 2: Retrospective sick leave allowed up to 14 days; beyond 14 days requires manager review
-    if submitted_category == "sick" and start_dt < (today_dt - timedelta(days=14)):
-        passed = False
-        decision = "routed"
-        reasons.append(
-            f"Retrospective sick leave limit exceeded: Sick leave starting older than 14 days ({start_str}) requires manager review."
-        )
-
-    # Rule 3: Extreme advance leave (> 365 days) requires manager review
+    # Extreme advance leave (> 365 days) requires manager review
+    from datetime import timedelta
     if start_dt > (today_dt + timedelta(days=365)):
         passed = False
         decision = "routed"
