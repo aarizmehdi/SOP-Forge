@@ -108,6 +108,34 @@ def _evaluate_leave_dmn(submitted_data: dict, extracted: dict, live_data: dict, 
             "evaluation_reasoning": f"DMN Failure: Invalid calculated duration ({days_req} days). Escalated for human review."
         }
 
+    # Date bounds checks (Retrospective & Advanced Planning validation)
+    from datetime import timedelta
+    today_dt = date.today()
+
+    # Rule 1: Backdated non-sick leave (annual, casual, unpaid) requires manager review
+    if submitted_category != "sick" and start_dt < today_dt:
+        passed = False
+        decision = "routed"
+        reasons.append(
+            f"Backdated leave rule: {submitted_category.capitalize()} leave starting in the past ({start_str}) requires manager approval and cannot be auto-approved."
+        )
+
+    # Rule 2: Retrospective sick leave allowed up to 14 days; beyond 14 days requires manager review
+    if submitted_category == "sick" and start_dt < (today_dt - timedelta(days=14)):
+        passed = False
+        decision = "routed"
+        reasons.append(
+            f"Retrospective sick leave limit exceeded: Sick leave starting older than 14 days ({start_str}) requires manager review."
+        )
+
+    # Rule 3: Extreme advance leave (> 365 days) requires manager review
+    if start_dt > (today_dt + timedelta(days=365)):
+        passed = False
+        decision = "routed"
+        reasons.append(
+            f"Advance planning threshold exceeded: Leave requested more than 365 days in advance ({start_str}) requires manager review."
+        )
+
     # Fetch HRMS Leave Balance for normalized category
     balance_dict = live_data.get("leave_balance", {}).get("balances", {}).get(submitted_category, {})
     remaining_balance = balance_dict.get("remaining", 0)
