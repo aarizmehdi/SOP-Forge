@@ -152,9 +152,9 @@ def _evaluate_leave_dmn(submitted_data: dict, extracted: dict, live_data: dict, 
     )
     if submitted_category == "sick" and days_req >= 3 and not has_evidence:
         passed = False
-        decision = "routed"
+        decision = "awaiting_evidence"
         reasons.append(
-            f"Medical evidence attachment is required for sick leave requests of 3 days or more ({days_req} days requested). Request escalated for human review."
+            f"Medical evidence attachment (PDF, PNG, or JPEG up to 5MB) is required for sick leave requests of 3 days or more ({days_req} days requested). Request is waiting for medical certificate upload before it can be submitted to manager."
         )
 
     if passed:
@@ -162,10 +162,13 @@ def _evaluate_leave_dmn(submitted_data: dict, extracted: dict, live_data: dict, 
             f"SOP Compliance Verified: Employee has {remaining_balance} days of {submitted_category.capitalize()} leave available for {days_req} requested day(s)."
         )
 
+    calc_status = "awaiting_evidence" if decision == "awaiting_evidence" else ("escalated" if not passed else "in_progress")
+
     return {
         "dmn_result": passed,
         "decision": decision,
-        "evaluation_reasoning": " ".join(reasons)
+        "status": calc_status,
+        "evaluation_reasoning": " | ".join(reasons),
     }
 
 

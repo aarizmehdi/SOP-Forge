@@ -175,11 +175,32 @@ const ChatAssistant = (() => {
             let contentHtml = `<p>${formatMarkdown(result.message)}</p>`;
 
             if (result.request_details) {
-                contentHtml += `
-                    <div style="margin-top: 12px;">
-                        <a href="#/requests" class="btn btn-secondary btn-sm" style="background:var(--bg-tertiary);border-color:var(--border-subtle);color:var(--text-primary);font-size:12px;padding:6px 12px">View in My Requests</a>
-                    </div>
-                `;
+                const req = result.request_details;
+                const isAwaitingEvidence = req.status === 'awaiting_evidence' || req.decision === 'awaiting_evidence';
+
+                if (isAwaitingEvidence) {
+                    contentHtml += `
+                        <div id="chat-evidence-card-${req.id}" style="margin-top: 14px; background: rgba(59, 130, 246, 0.08); border: 1.5px dashed rgba(59, 130, 246, 0.35); border-radius: 12px; padding: 16px; text-align: center;">
+                            <div style="font-size: 13px; font-weight: 600; color: var(--primary-400); margin-bottom: 4px; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                                📎 Upload Required Medical Certificate / Evidence
+                            </div>
+                            <div style="font-size: 11px; color: var(--text-tertiary); margin-bottom: 12px;">
+                                Allowed Formats: <strong>PDF, JPEG, PNG</strong> (Max file size: <strong>5MB</strong>)
+                            </div>
+                            <input type="file" id="chat-file-input-${req.id}" style="display:none" accept=".pdf,.jpeg,.jpg,.png" onchange="ChatAssistant.uploadEvidenceFromChat('${req.id}', this)">
+                            <button class="btn btn-primary btn-sm" style="font-size: 12px; padding: 8px 18px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px;" onclick="document.getElementById('chat-file-input-${req.id}').click()">
+                                📁 Select File & Attach Evidence
+                            </button>
+                            <div id="chat-upload-status-${req.id}" style="font-size: 11px; margin-top: 8px; font-weight: 500;"></div>
+                        </div>
+                    `;
+                } else {
+                    contentHtml += `
+                        <div style="margin-top: 12px;">
+                            <a href="#/requests" class="btn btn-secondary btn-sm" style="background:var(--bg-tertiary);border-color:var(--border-subtle);color:var(--text-primary);font-size:12px;padding:6px 12px">View in My Requests</a>
+                        </div>
+                    `;
+                }
             }
 
             const aiRow = document.createElement('div');
@@ -325,5 +346,89 @@ const ChatAssistant = (() => {
         }
     }
 
-    return { render, selectDepartment, sendUserMessage, toggleRecording };
+    async function uploadEvidenceFromChat(requestId, fileInput) {
+        if (!fileInput.files || !fileInput.files[0]) return;
+        const file = fileInput.files[0];
+        const statusEl = document.getElementById(`chat-upload-status-${requestId}`);
+        const cardEl = document.getElementById(`chat-evidence-card-${requestId}`);
+
+        // Front-end File Size Validation (5 MB Max)
+        if (file.size > 5 * 1024 * 1024) {
+            App.toast('File size exceeds 5MB limit. Please upload a file smaller than 5MB.', 'error');
+            if (statusEl) statusEl.innerHTML = '<span style="color:#ef4444">❌ File exceeds 5MB limit.</span>';
+            return;
+        }
+
+        // Extension validation
+        const ext = file.name.split('.').pop().toLowerCase();
+        if (!['pdf', 'jpg', 'jpeg', 'png'].includes(ext)) {
+            App.toast('Invalid file format. Only PDF, JPEG, and PNG files are allowed.', 'error');
+            if (statusEl) statusEl.innerHTML = '<span style="color:#ef4444">❌ Invalid file type. PDF, JPEG, PNG only.</span>';
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            if (statusEl) statusEl.innerHTML = '<span style="color:var(--primary-400)">⏳ Uploading and evaluating evidence...</span>';
+            const token = Auth.getToken();
+            const res = await fetch(`/api/evidence/upload/${requestId}`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                },
+                body: formData
+            });
+
+            const data = await res.json();
+            if (!res.ok) {
+                throw new Error(data.detail || 'Failed to upload evidence');
+            }
+
+            App.toast('Medical certificate attached successfully!', 'success');
+            
+            if (cardEl) {
+                cardEl.style.borderStyle = 'solid';
+                cardEl.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+                cardEl.style.background = 'rgba(16, 185, 129, 0.08)';
+                cardEl.innerHTML = `
+                    <div style="font-size: 13px; font-weight: 600; color: var(--success); display: flex; align-items: center; justify-content: center; gap: 6px;">
+                        ✅ Medical Certificate Attached (${file.name})
+                    </div>
+                    <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 4px;">
+                        Status: <strong>${(data.new_request_status || 'ESCALATED').toUpperCase()}</strong> — Sent to Manager for Review
+                    </div>
+                `;
+            }
+
+            // Append assistant confirmation message
+            const messagesContainer = document.getElementById('ca-messages');
+            const aiRow = document.createElement('div');
+            aiRow.className = 'ca-msg ca-msg-ai';
+            aiRow.innerHTML = `
+                <div class="ca-msg-avatar ca-avatar-ai">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                </div>
+                <div class="ca-msg-body">
+                    <div class="ca-msg-name">Forge AI Copilot</div>
+                    <div class="ca-msg-content ca-content-ai">
+                        <p><strong>⏳ Request Sent for Manager Review.</strong></p>
+                        <p>Thank you! Your medical certificate (<strong>${file.name}</strong>) has been uploaded and attached to your leave request. Your request is now routed to your manager with your supporting evidence.</p>
+                        <div style="margin-top: 10px;">
+                            <a href="#/requests" class="btn btn-secondary btn-sm" style="background:var(--bg-tertiary);border-color:var(--border-subtle);color:var(--text-primary);font-size:12px;padding:6px 12px">View in My Requests</a>
+                        </div>
+                    </div>
+                </div>
+            `;
+            messagesContainer.appendChild(aiRow);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+        } catch (err) {
+            App.toast(`Upload failed: ${err.message}`, 'error');
+            if (statusEl) statusEl.innerHTML = `<span style="color:#ef4444">❌ Upload failed: ${err.message}</span>`;
+        }
+    }
+
+    return { render, selectDepartment, sendUserMessage, toggleRecording, uploadEvidenceFromChat };
 })();

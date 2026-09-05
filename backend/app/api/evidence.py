@@ -30,7 +30,7 @@ ALLOWED_MIME_TYPES = {
     "image/png",
 }
 ALLOWED_EXTENSIONS = {".pdf", ".jpeg", ".jpg", ".png"}
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB limit
+MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB max limit
 
 
 @router.post("/upload/{request_id}")
@@ -42,7 +42,8 @@ async def upload_evidence(
 ):
     """
     Upload evidence file for a specific request.
-    Validates MIME type, extension, and 10MB size limit.
+    Validates MIME type, extension, and 5MB size limit.
+    Automatically re-evaluates DMN workflow once evidence is attached.
     """
     # Verify request exists
     sop_req = await db.sop_requests.find_one({"id": request_id})
@@ -59,7 +60,7 @@ async def upload_evidence(
     if ext not in ALLOWED_EXTENSIONS or file.content_type not in ALLOWED_MIME_TYPES:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid file type '{file.content_type}'. Allowed types: PDF, JPEG, PNG.",
+            detail=f"Invalid file type '{file.content_type}'. Allowed formats: PDF, JPEG, PNG (max 5MB).",
         )
 
     # Read and check size
@@ -67,7 +68,7 @@ async def upload_evidence(
     if len(content) == 0:
         raise HTTPException(status_code=400, detail="Uploaded file is empty")
     if len(content) > MAX_FILE_SIZE:
-        raise HTTPException(status_code=400, detail="File size exceeds 10MB limit")
+        raise HTTPException(status_code=400, detail="File size exceeds 5MB limit")
 
     # Save to disk securely
     unique_filename = f"{uuid.uuid4().hex}_{filename}"
@@ -99,19 +100,38 @@ async def upload_evidence(
         "uploaded_at": evidence_entry.uploaded_at.isoformat(),
     })
 
+    # Re-evaluate DMN workflow now that evidence is attached
+    from orchestration.graph import run_request_workflow
+    eval_result = await run_request_workflow(
+        request_id=request_id,
+        employee_id=sop_req.get("employee_id"),
+        employee_code=current_user.employee_id,
+        request_type=sop_req.get("request_type", "leave"),
+        submitted_data=sop_req.get("submitted_data", {}),
+    )
+
+    new_decision = eval_result.get("decision", "routed")
+    new_status = eval_result.get("status", "escalated")
+    new_reasoning = eval_result.get("evaluation_reasoning", "")
+
     await db.sop_requests.update_one(
         {"id": request_id},
         {"$set": {
             "has_evidence": True,
             "evidence_list": existing_list,
+            "decision": new_decision,
+            "status": new_status,
+            "evaluation_reasoning": new_reasoning,
         }}
     )
 
-    logger.info(f"Evidence {filename} uploaded for request {request_id} by {current_user.name}")
+    logger.info(f"Evidence {filename} uploaded for request {request_id} by {current_user.name}. Status updated to {new_status}.")
     return {
         "status": "success",
-        "message": f"Evidence '{filename}' attached successfully",
+        "message": f"Evidence '{filename}' attached successfully. Request workflow updated.",
         "evidence": evidence_dict,
+        "new_request_status": new_status,
+        "new_decision": new_decision,
     }
 
 

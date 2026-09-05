@@ -486,6 +486,8 @@ CRITICAL RULES:
         # Enforce deterministic status header so LLM can never contradict workflow decision
         if dec_str == "approved":
             status_header = "✅ Request Approved."
+        elif status_str == "awaiting_evidence" or dec_str == "awaiting_evidence":
+            status_header = "📎 Action Required: Medical Certificate / Evidence Required."
         elif status_str == "escalated" or dec_str == "routed":
             status_header = "⏳ Request Sent for Manager Review. (It has not been approved yet.)"
         elif dec_str == "rejected":
