@@ -33,9 +33,9 @@ def check_confidence(state: RequestState) -> str:
     except (ValueError, TypeError):
         confidence = 0.0
 
-    # DMN failure or explicit routing ALWAYS takes precedence over LLM confidence
-    if decision == "routed" or decision == "rejected" or not dmn_result:
-        logger.info(f"Edge: DMN failed, rejected, or explicitly routed (decision='{decision}', dmn={dmn_result}) — escalating")
+    # DMN failure, explicit routing, or awaiting_evidence takes precedence over LLM confidence
+    if decision in ("routed", "rejected", "awaiting_evidence") or not dmn_result:
+        logger.info(f"Edge: DMN failed, rejected, routed, or awaiting evidence (decision='{decision}', dmn={dmn_result}) — routing to escalate node")
         return "escalate"
 
     if confidence >= threshold:
