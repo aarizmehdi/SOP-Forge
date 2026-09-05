@@ -13,19 +13,19 @@ from app.models.audit import AuditEventType
 
 class AuditLogResponse(BaseModel):
     """A single audit log entry."""
-    id: UUID
-    request_id: UUID | None
+    id: str | UUID
+    request_id: str | UUID | None = None
     event_type: AuditEventType
-    actor_id: UUID | None
+    actor_id: str | UUID | None = None
     actor_name: str | None = None
-    actor_role: str | None
-    decision: str | None
-    confidence: float | None
-    policy_refs: list[str] | None
-    evaluation_reasoning: str | None
-    override_justification: str | None
-    previous_decision: str | None
-    details: dict | None
+    actor_role: str | None = None
+    decision: str | None = None
+    confidence: float | None = None
+    policy_refs: list[str] | None = None
+    evaluation_reasoning: str | None = None
+    override_justification: str | None = None
+    previous_decision: str | None = None
+    details: dict | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

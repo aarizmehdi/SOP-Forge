@@ -161,11 +161,13 @@ const Dashboard = (() => {
 
         const rows = logs.map(log => {
             const date = new Date(log.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute:'2-digit' });
+            const evt = (log.event_type || '').toLowerCase();
             let actionColor = 'var(--text-primary)';
             let bgColor = 'var(--border-subtle)';
-            if (log.event_type === 'AUTO_APPROVED' || log.event_type === 'APPROVED') { actionColor = 'var(--status-approved)'; bgColor = 'var(--status-approved-bg)'; }
-            if (log.event_type === 'ESCALATED') { actionColor = 'var(--accent-400)'; bgColor = 'rgba(139,92,246,0.1)'; }
-            if (log.event_type === 'AUTO_REJECTED' || log.event_type === 'DECLINED') { actionColor = 'var(--status-escalated)'; bgColor = 'var(--status-escalated-bg)'; }
+            if (evt.includes('approved')) { actionColor = 'var(--status-approved)'; bgColor = 'var(--status-approved-bg)'; }
+            else if (evt.includes('escalated')) { actionColor = 'var(--accent-400)'; bgColor = 'rgba(139,92,246,0.1)'; }
+            else if (evt.includes('reject') || evt.includes('declin')) { actionColor = 'var(--status-escalated)'; bgColor = 'var(--status-escalated-bg)'; }
+            else if (evt.includes('override')) { actionColor = 'var(--status-overridden)'; bgColor = 'rgba(234,179,8,0.15)'; }
 
             return `
                 <tr class="table-row-hover" onclick="window.location.hash='#/audit'" style="cursor:pointer; border-bottom:1px solid rgba(255,255,255,0.03);">
@@ -174,7 +176,7 @@ const Dashboard = (() => {
                     </td>
                     <td style="padding: 16px;">
                         <span style="display:inline-flex; align-items:center; color:${actionColor}; font-weight:600; font-size:12px; background:${bgColor}; padding: 6px 12px; border-radius: 6px; letter-spacing:0.5px; text-transform:uppercase;">
-                            ${log.event_type.replace('_', ' ')}
+                            ${log.event_type.replace(/_/g, ' ')}
                         </span>
                     </td>
                     <td style="padding: 16px;">

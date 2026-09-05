@@ -54,7 +54,7 @@ const API = (() => {
         getRequest: (id) => request('GET', `/api/request/${id}`),
 
         // Review
-        getPendingReviews: () => request('GET', '/api/review/pending'),
+        getPendingReviews: (statusFilter = 'escalated') => request('GET', `/api/review/pending?status_filter=${statusFilter}`),
         submitReview: (id, data) => request('POST', `/api/review/${id}/decide`, data),
         submitOverride: (id, data) => request('POST', `/api/review/${id}/override`, data),
 

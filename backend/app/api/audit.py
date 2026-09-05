@@ -42,27 +42,7 @@ async def get_audit_logs(
     )
 
     logs = await query_audit_logs(db, query)
-
-    # Note: Actor name is mocked here for speed since MongoDB doesn't JOIN natively
-    return [
-        AuditLogResponse(
-            id=log.id,
-            request_id=log.request_id,
-            event_type=log.event_type,
-            actor_id=log.actor_id,
-            actor_name="System/User", 
-            actor_role=log.actor_role,
-            decision=log.decision,
-            confidence=log.confidence,
-            policy_refs=log.policy_refs,
-            evaluation_reasoning=log.evaluation_reasoning,
-            override_justification=log.override_justification,
-            previous_decision=log.previous_decision,
-            details=log.details,
-            created_at=log.created_at,
-        )
-        for log in logs
-    ]
+    return await resolve_audit_actors(db, logs)
 
 
 @router.get("/logs/{request_id}", response_model=list[AuditLogResponse])
@@ -74,26 +54,46 @@ async def get_request_audit_trail(
     """Get full audit history for a specific request."""
     query = AuditLogQuery(request_id=request_id, limit=500)
     logs = await query_audit_logs(db, query)
+    return await resolve_audit_actors(db, logs)
 
-    return [
-        AuditLogResponse(
-            id=log.id,
-            request_id=log.request_id,
-            event_type=log.event_type,
-            actor_id=log.actor_id,
-            actor_name="System/User",
-            actor_role=log.actor_role,
-            decision=log.decision,
-            confidence=log.confidence,
-            policy_refs=log.policy_refs,
-            evaluation_reasoning=log.evaluation_reasoning,
-            override_justification=log.override_justification,
-            previous_decision=log.previous_decision,
-            details=log.details,
-            created_at=log.created_at,
+
+async def resolve_audit_actors(db: AsyncIOMotorDatabase, logs: list) -> list[AuditLogResponse]:
+    """Helper to resolve actor names from DB users collection for audit response."""
+    actor_ids = {str(log.actor_id) for log in logs if log.actor_id and not str(log.actor_id).startswith("system")}
+    users_map = {}
+    if actor_ids:
+        users_cursor = db.users.find({"id": {"$in": list(actor_ids)}})
+        users = await users_cursor.to_list(length=len(actor_ids))
+        for u in users:
+            users_map[str(u["id"])] = f"{u.get('name', 'User')}"
+
+    responses = []
+    for log in logs:
+        actor_id_str = str(log.actor_id) if log.actor_id else None
+        if not actor_id_str or actor_id_str.startswith("system"):
+            actor_name = "AI Engine (System)"
+        else:
+            actor_name = users_map.get(actor_id_str, log.actor_role or "User")
+
+        responses.append(
+            AuditLogResponse(
+                id=log.id,
+                request_id=log.request_id,
+                event_type=log.event_type,
+                actor_id=log.actor_id,
+                actor_name=actor_name,
+                actor_role=log.actor_role or ("system" if not actor_id_str or actor_id_str.startswith("system") else "user"),
+                decision=log.decision,
+                confidence=log.confidence,
+                policy_refs=log.policy_refs,
+                evaluation_reasoning=log.evaluation_reasoning,
+                override_justification=log.override_justification,
+                previous_decision=log.previous_decision,
+                details=log.details,
+                created_at=log.created_at,
+            )
         )
-        for log in logs
-    ]
+    return responses
 
 
 @router.get("/summary", response_model=AuditSummary)

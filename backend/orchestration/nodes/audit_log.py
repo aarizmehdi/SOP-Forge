@@ -54,9 +54,10 @@ async def audit_log(state: RequestState) -> dict:
             req_uuid = None
 
         entry = AuditLogModel(
-            id=uuid.uuid4(),
-            request_id=req_uuid,
+            id=str(uuid.uuid4()),
+            request_id=str(request_id) if request_id != "unknown" else None,
             event_type=event_type,
+            actor_id="system",
             actor_role="system",
             decision=decision,
             confidence=confidence,

@@ -5,13 +5,37 @@
 
 const ReviewPanel = (() => {
     let pendingRequests = [];
+    let currentStatusFilter = 'escalated';
 
     async function render(container) {
+        const user = Auth.getUser();
+        const isAdmin = user?.role === 'admin';
+
         container.innerHTML = `
             <div class="page-header animate-slide-down">
-                <h1 class="page-title">Review Panel</h1>
-                <p class="page-subtitle">Escalated requests awaiting your decision</p>
+                <div style="display:flex;justify-content:space-between;align-items:flex-end">
+                    <div>
+                        <h1 class="page-title">Review Panel</h1>
+                        <p class="page-subtitle">Manage escalated team requests and executive overrides</p>
+                    </div>
+                </div>
             </div>
+
+            ${isAdmin ? `
+                <div style="background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.2);padding:10px 16px;border-radius:8px;margin-bottom:var(--space-md);font-size:var(--text-xs);color:var(--primary-400);display:flex;align-items:center;gap:8px;">
+                    <span>ℹ️</span> <strong>Admin Oversight Mode:</strong> Viewing all organizational review requests across departments.
+                </div>
+            ` : ''}
+
+            <div class="action-bar-group" id="review-status-tabs" style="display:flex;gap:8px;margin-bottom:var(--space-md);">
+                <button class="filter-chip ${currentStatusFilter === 'escalated' ? 'active' : ''}" onclick="ReviewPanel.switchTab('escalated', this)">
+                    📌 Pending Escalations
+                </button>
+                <button class="filter-chip ${currentStatusFilter === 'past' ? 'active' : ''}" onclick="ReviewPanel.switchTab('past', this)">
+                    📜 Past Decisions & Overrides
+                </button>
+            </div>
+
             <div id="review-list">
                 ${[1,2].map(() => `
                     <div class="card animate-slide-up" style="margin-bottom:var(--space-xl)">
@@ -38,11 +62,6 @@ const ReviewPanel = (() => {
                                 <div class="skeleton skeleton-text" style="width:70%"></div>
                             </div>
                         </div>
-                        <div style="display:flex;gap:12px;justify-content:flex-end;border-top:1px solid var(--border-subtle);padding-top:16px">
-                            <div class="skeleton skeleton-text" style="width:100px;height:36px;border-radius:6px;margin-bottom:0"></div>
-                            <div class="skeleton skeleton-text" style="width:100px;height:36px;border-radius:6px;margin-bottom:0"></div>
-                            <div class="skeleton skeleton-text" style="width:100px;height:36px;border-radius:6px;margin-bottom:0"></div>
-                        </div>
                     </div>
                 `).join('')}
             </div>
@@ -50,9 +69,16 @@ const ReviewPanel = (() => {
         loadPendingReviews();
     }
 
+    async function switchTab(filter, btnEl) {
+        document.querySelectorAll('#review-status-tabs .filter-chip').forEach(c => c.classList.remove('active'));
+        btnEl.classList.add('active');
+        currentStatusFilter = filter;
+        loadPendingReviews();
+    }
+
     async function loadPendingReviews() {
         try {
-            pendingRequests = await API.getPendingReviews();
+            pendingRequests = await API.getPendingReviews(currentStatusFilter);
             renderReviewList();
         } catch (err) {
             document.getElementById('review-list').innerHTML = `
@@ -68,8 +94,8 @@ const ReviewPanel = (() => {
             container.innerHTML = `
                 <div class="empty-state">
                     <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-                    <h3>All caught up!</h3>
-                    <p>No escalated requests pending review.</p>
+                    <h3>No requests found</h3>
+                    <p>${currentStatusFilter === 'escalated' ? 'No escalated requests pending review.' : 'No past decision records found.'}</p>
                 </div>
             `;
             return;
@@ -79,23 +105,25 @@ const ReviewPanel = (() => {
             const cleanRefs = formatPolicyRefs(req.policy_refs);
             const reasoning = cleanReasoning(req.evaluation_reasoning);
             const details = formatRequestDetails(req);
+            const isResolved = req.status === 'resolved' || req.status === 'overridden';
 
             return `
             <div class="card animate-slide-up" style="margin-bottom:var(--space-md);animation-delay:${idx * 0.05}s">
-                <!-- Header: Employee info + SLA -->
+                <!-- Header: Employee info + Status / SLA -->
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:var(--space-md)">
                     <div>
                         <div style="display:flex;align-items:center;gap:var(--space-sm);margin-bottom:6px">
                             <span style="font-size:var(--text-base);font-weight:600;color:var(--text-primary)">${req.employee_name}</span>
                             <span style="font-size:var(--text-xs);color:var(--text-tertiary)">${req.employee_id_code}</span>
-                            <span class="badge badge-pending">${formatRequestType(req.request_type)}</span>
+                            <span class="badge badge-${req.status}">${formatRequestType(req.request_type)}</span>
+                            ${req.ai_decision ? `<span class="badge badge-${req.ai_decision}">${req.ai_decision.toUpperCase()}</span>` : ''}
                         </div>
                         <div style="display:flex;align-items:center;gap:var(--space-md);font-size:var(--text-xs);color:var(--text-tertiary)">
                             ${req.department ? `<span>📍 ${req.department}</span>` : ''}
                             <span>📅 ${new Date(req.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}, ${new Date(req.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
                         </div>
                     </div>
-                    ${renderSLATimer(req.sla_remaining_minutes)}
+                    ${!isResolved ? renderSLATimer(req.sla_remaining_minutes) : `<span class="badge badge-${req.status}" style="font-size:12px;padding:4px 10px">${req.status.toUpperCase()}</span>`}
                 </div>
 
                 <!-- Request Details -->
@@ -107,10 +135,10 @@ const ReviewPanel = (() => {
                     </div>
                 ` : ''}
 
-                <!-- Reason for Escalation -->
+                <!-- Reason for Escalation / Evaluation -->
                 ${reasoning ? `
                     <div style="margin-bottom:var(--space-md)">
-                        <div style="font-size:11px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Reason for Escalation</div>
+                        <div style="font-size:11px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Evaluation Summary</div>
                         <div class="reasoning-box">${reasoning}</div>
                     </div>
                 ` : ''}
@@ -125,21 +153,25 @@ const ReviewPanel = (() => {
 
                 <!-- Action Buttons -->
                 <div style="display:flex;gap:var(--space-sm);align-items:center;padding-top:var(--space-md);border-top:1px solid var(--border-subtle)">
-                    <button class="btn btn-success btn-sm" onclick="ReviewPanel.showDecisionModal('${req.id}', 'approved')">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-                        Approve
-                    </button>
-                    <button class="btn btn-danger btn-sm" onclick="ReviewPanel.showDecisionModal('${req.id}', 'rejected')">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                        Reject
-                    </button>
-                    <button class="btn btn-warning btn-sm" onclick="ReviewPanel.showDecisionModal('${req.id}', 'routed')">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                        Request More Info
-                    </button>
-                    ${Auth.hasMinRole('manager') ? `
+                    ${!isResolved ? `
+                        <button class="btn btn-success btn-sm" onclick="ReviewPanel.showDecisionModal('${req.id}', 'approved')">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                            Approve
+                        </button>
+                        <button class="btn btn-danger btn-sm" onclick="ReviewPanel.showDecisionModal('${req.id}', 'rejected')">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                            Reject
+                        </button>
+                        <button class="btn btn-warning btn-sm" onclick="ReviewPanel.showDecisionModal('${req.id}', 'routed')">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                            Request More Info
+                        </button>
+                    ` : `
+                        <span style="font-size:var(--text-xs);color:var(--text-tertiary)">Decision Recorded: <strong>${(req.ai_decision || req.status).toUpperCase()}</strong></span>
+                    `}
+                    ${Auth.hasMinRole('executive') ? `
                         <button class="btn btn-ghost btn-sm" style="margin-left:auto;color:var(--status-escalated)" onclick="ReviewPanel.showOverrideModal('${req.id}')">
-                            ⚡ Override
+                            ⚡ Executive Override
                         </button>
                     ` : ''}
                 </div>
@@ -305,5 +337,5 @@ const ReviewPanel = (() => {
         });
     }
 
-    return { render, showDecisionModal, showOverrideModal };
+    return { render, switchTab, showDecisionModal, showOverrideModal };
 })();

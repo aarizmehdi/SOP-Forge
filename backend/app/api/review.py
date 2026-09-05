@@ -27,11 +27,12 @@ router = APIRouter(prefix="/api/review", tags=["Review"])
 
 @router.get("/pending", response_model=list[EscalatedRequestItem])
 async def get_pending_reviews(
+    status_filter: str = "escalated",
     db: AsyncIOMotorDatabase = Depends(get_db),
     current_user: User = Depends(require_manager),
 ):
     """Get escalated requests pending review for the current manager."""
-    requests = await get_escalated_requests(db, current_user)
+    requests = await get_escalated_requests(db, current_user, status_filter=status_filter)
 
     items = []
     for req in requests:

@@ -154,8 +154,23 @@ const AuditViewer = (() => {
                     </thead>
                     <tbody>
                         ${logs.map(log => {
-                            const decisionStr = log.decision ? log.decision.charAt(0).toUpperCase() + log.decision.slice(1) : 'Logged';
-                            const actorLabel = log.actor_name ? `${log.actor_name} (${log.actor_role})` : (log.actor_role || 'System Agent');
+                            let decisionStr = 'Recorded';
+                            const evt = (log.event_type || '').toLowerCase();
+                            if (log.decision) {
+                                decisionStr = log.decision.charAt(0).toUpperCase() + log.decision.slice(1);
+                            } else if (evt.includes('approved')) {
+                                decisionStr = 'Approved';
+                            } else if (evt.includes('rejected')) {
+                                decisionStr = 'Rejected';
+                            } else if (evt.includes('escalated')) {
+                                decisionStr = 'Escalated';
+                            } else if (evt.includes('override')) {
+                                decisionStr = 'Overridden';
+                            } else if (evt === 'request_submitted') {
+                                decisionStr = 'Submitted';
+                            }
+
+                            const actorLabel = log.actor_name ? log.actor_name : (log.actor_role || 'System Agent');
                             
                             return `
                                 <tr onclick="AuditViewer.inspectLog('${log.id}')" style="cursor:pointer">

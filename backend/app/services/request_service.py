@@ -110,19 +110,24 @@ async def get_escalated_requests(
     db: AsyncIOMotorDatabase,
     manager: User,
     limit: int = 50,
+    status_filter: str = "escalated",
 ) -> list[SOPRequest]:
-    """Get escalated requests for a manager's department."""
-    query = {"status": RequestStatus.ESCALATED.value}
+    """Get requests for review, filtered by status and manager department."""
+    if status_filter == "past" or status_filter == "resolved":
+        query = {"status": {"$in": [RequestStatus.RESOLVED.value, RequestStatus.OVERRIDDEN.value]}}
+    elif status_filter == "all":
+        query = {}
+    else:
+        query = {"status": RequestStatus.ESCALATED.value}
     
     # If manager (not executive/admin), filter by department
     if manager.role.value == "manager" and manager.department_id:
-        # Fetch all users in this department
         dept_users_cursor = db.users.find({"department_id": manager.department_id}, {"id": 1})
         dept_users = await dept_users_cursor.to_list(length=1000)
         user_ids = [u["id"] for u in dept_users]
         query["employee_id"] = {"$in": user_ids}
 
-    cursor = db.sop_requests.find(query).sort("sla_deadline", 1).limit(limit)
+    cursor = db.sop_requests.find(query).sort("created_at", -1).limit(limit)
     docs = await cursor.to_list(length=limit)
     return [SOPRequest(**doc) for doc in docs]
 
@@ -143,6 +148,12 @@ async def process_review_decision(
 
     if sop_request.status != RequestStatus.ESCALATED:
         raise ValueError(f"Request {request_id_str} is not in escalated status")
+
+    # Enforce department check for department managers
+    if reviewer.role.value == "manager" and reviewer.department_id:
+        emp_user = await db.users.find_one({"id": sop_request.employee_id})
+        if emp_user and emp_user.get("department_id") and emp_user["department_id"] != reviewer.department_id:
+            raise ValueError("You can only decide on requests belonging to your department.")
 
     # Update request
     sop_request.decision = Decision(decision)
