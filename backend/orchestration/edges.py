@@ -19,13 +19,23 @@ def check_confidence(state: RequestState) -> str:
     High confidence AND DMN pass → auto_decide → audit_log
     Low confidence OR DMN fail  → escalate → override_check → audit_log
     """
-    confidence = state.get("confidence", 0.0)
+    raw_confidence = state.get("confidence")
     decision = state.get("decision", "pending")
     dmn_result = state.get("dmn_result", False)
     threshold = settings.confidence_threshold
 
-    if decision == "routed" or not dmn_result:
-        logger.info(f"Edge: DMN failed or explicitly routed — escalating")
+    # P1-4: Clamp confidence and handle missing/invalid values safely
+    try:
+        if raw_confidence is None:
+            confidence = 0.0
+        else:
+            confidence = max(0.0, min(1.0, float(raw_confidence)))
+    except (ValueError, TypeError):
+        confidence = 0.0
+
+    # DMN failure or explicit routing ALWAYS takes precedence over LLM confidence
+    if decision == "routed" or decision == "rejected" or not dmn_result:
+        logger.info(f"Edge: DMN failed, rejected, or explicitly routed (decision='{decision}', dmn={dmn_result}) — escalating")
         return "escalate"
 
     if confidence >= threshold:

@@ -26,10 +26,11 @@ class Settings(BaseSettings):
 
     # ── LLM ──
     deepseek_api_key: str = "your-deepseek-api-key-here"
+    openai_api_key: str = ""
     assemblyai_api_key: str = ""
 
     # ── Auth ──
-    jwt_secret: str = "change-me-to-a-random-secret-in-production"
+    jwt_secret: str = "sopforge-secure-org-demo-secret-key-2026"
     jwt_algorithm: str = "HS256"
     jwt_expiry_minutes: int = 480
 

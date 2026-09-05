@@ -60,6 +60,27 @@ async def create_sop_document(
 
     chunk_count = await db.sop_chunks.count_documents({"document_id": document.id})
 
+    # Record Audit Entry for SOP creation
+    try:
+        from app.models.audit import AuditEventType
+        from app.services.request_service import create_audit_entry
+        await create_audit_entry(
+            db,
+            request_id=document.id,
+            event_type=AuditEventType.SOP_UPDATED,
+            actor_id=str(current_user.id),
+            actor_role=current_user.role.value,
+            details={
+                "action": "sop_created",
+                "document_id": document.id,
+                "document_title": document.title,
+                "category": document.category,
+                "version": document.version,
+            },
+        )
+    except Exception as e:
+        logger.warning(f"Failed to record SOP creation audit event: {e}")
+
     return SOPDocumentResponse(
         id=document.id,
         title=document.title,
@@ -121,6 +142,27 @@ async def update_sop(
 
     chunk_count = await db.sop_chunks.count_documents({"document_id": document.id})
 
+    # Record Audit Entry for SOP update
+    try:
+        from app.models.audit import AuditEventType
+        from app.services.request_service import create_audit_entry
+        await create_audit_entry(
+            db,
+            request_id=document.id,
+            event_type=AuditEventType.SOP_UPDATED,
+            actor_id=str(current_user.id),
+            actor_role=current_user.role.value,
+            details={
+                "action": "sop_updated",
+                "document_id": document.id,
+                "document_title": document.title,
+                "category": document.category,
+                "version": document.version,
+            },
+        )
+    except Exception as e:
+        logger.warning(f"Failed to record SOP update audit event: {e}")
+
     return SOPDocumentResponse(
         id=document.id,
         title=document.title,
@@ -150,6 +192,25 @@ async def deactivate_sop(
         {"id": doc_id},
         {"$set": {"is_active": False, "updated_at": datetime.now(timezone.utc)}}
     )
+
+    # Record Audit Entry for SOP deactivation
+    try:
+        from app.models.audit import AuditEventType
+        from app.services.request_service import create_audit_entry
+        await create_audit_entry(
+            db,
+            request_id=doc_id,
+            event_type=AuditEventType.SOP_UPDATED,
+            actor_id=str(current_user.id),
+            actor_role=current_user.role.value,
+            details={
+                "action": "sop_deactivated",
+                "document_id": doc_id,
+                "document_title": doc_dict.get("title"),
+            },
+        )
+    except Exception as e:
+        logger.warning(f"Failed to record SOP deactivation audit event: {e}")
 
     return {"status": "success", "message": f"SOP '{doc_dict.get('title')}' deactivated"}
 

@@ -178,6 +178,26 @@ const MyRequests = (() => {
 
                 ${detailsHtml}
 
+                ${req.has_evidence && req.evidence_list && req.evidence_list.length ? `
+                    <div style="margin-bottom:var(--space-md);background:rgba(59,130,246,0.06);border:1px solid rgba(59,130,246,0.2);border-radius:var(--radius-md);padding:10px 14px">
+                        <div style="font-size:11px;font-weight:700;color:var(--primary-400);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">📎 Supporting Evidence Attached</div>
+                        <div style="display:flex;flex-wrap:wrap;gap:10px">
+                            ${req.evidence_list.map(ev => `
+                                <a href="/api/evidence/file/${ev.id}" target="_blank" class="btn btn-ghost btn-sm" style="background:var(--bg-tertiary);border:1px solid var(--border-subtle);font-size:var(--text-xs);display:inline-flex;align-items:center;gap:6px;color:var(--primary-400)">
+                                    📄 ${ev.original_filename} (${Math.round(ev.size / 1024)} KB)
+                                </a>
+                            `).join('')}
+                        </div>
+                    </div>
+                ` : `
+                    <div style="margin-bottom:var(--space-md);background:var(--bg-tertiary);border:1px dashed var(--border-subtle);border-radius:var(--radius-md);padding:12px;text-align:center">
+                        <input type="file" id="evidence-upload-input-${req.id}" style="display:none" onchange="MyRequests.uploadEvidence('${req.id}', this)" accept=".pdf,.jpeg,.jpg,.png">
+                        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('evidence-upload-input-${req.id}').click()" style="color:var(--primary-400)">
+                            📎 Attach Supporting Document (PDF / JPEG / PNG)
+                        </button>
+                    </div>
+                `}
+
                 <div style="display:flex;justify-content:flex-end;margin-top:var(--space-lg)">
                     <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Close</button>
                 </div>
@@ -186,5 +206,35 @@ const MyRequests = (() => {
         document.body.appendChild(overlay);
     }
 
-    return { render, viewDetail };
+    async function uploadEvidence(requestId, fileInput) {
+        if (!fileInput.files || !fileInput.files[0]) return;
+        const file = fileInput.files[0];
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            App.toast('Uploading evidence document...', 'info');
+            const token = Auth.getToken();
+            const res = await fetch(`/api/evidence/upload/${requestId}`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                },
+                body: formData
+            });
+
+            const data = await res.json();
+            if (!res.ok) {
+                throw new Error(data.detail || 'Failed to upload file');
+            }
+
+            App.toast('Evidence uploaded successfully!', 'success');
+            document.querySelectorAll('.modal-overlay').forEach(m => m.remove());
+            viewDetail(requestId);
+        } catch (err) {
+            App.toast(`Upload failed: ${err.message}`, 'error');
+        }
+    }
+
+    return { render, viewDetail, uploadEvidence };
 })();

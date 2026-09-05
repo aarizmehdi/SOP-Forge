@@ -151,6 +151,20 @@ const ReviewPanel = (() => {
                     </div>
                 ` : ''}
 
+                <!-- Supporting Evidence Attachments -->
+                ${req.has_evidence && req.evidence_list && req.evidence_list.length ? `
+                    <div style="margin-bottom:var(--space-md);background:rgba(59,130,246,0.06);border:1px solid rgba(59,130,246,0.2);border-radius:var(--radius-md);padding:10px 14px">
+                        <div style="font-size:11px;font-weight:700;color:var(--primary-400);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">📎 Supporting Evidence</div>
+                        <div style="display:flex;flex-wrap:wrap;gap:10px">
+                            ${req.evidence_list.map(ev => `
+                                <a href="/api/evidence/file/${ev.id}" target="_blank" class="btn btn-ghost btn-sm" style="background:var(--bg-tertiary);border:1px solid var(--border-subtle);font-size:var(--text-xs);display:inline-flex;align-items:center;gap:6px;color:var(--primary-400)">
+                                    📄 ${ev.original_filename} (${Math.round(ev.size / 1024)} KB)
+                                </a>
+                            `).join('')}
+                        </div>
+                    </div>
+                ` : ''}
+
                 <!-- Override Log Audit if available -->
                 ${req.override_log && req.override_log.length ? `
                     <div style="margin-bottom:var(--space-md);background:rgba(234,179,8,0.06);border:1px solid rgba(234,179,8,0.25);border-radius:var(--radius-md);padding:10px 14px">

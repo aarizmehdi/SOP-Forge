@@ -21,6 +21,13 @@ const AdminPanel = (() => {
                     </button>
                 </div>
             </div>
+
+            <div style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.25);border-radius:10px;padding:12px 18px;margin-bottom:24px;font-size:13px;color:var(--primary-200);display:flex;align-items:center;gap:12px">
+                <span style="font-size:18px">ℹ️</span>
+                <div>
+                    <strong>System Architecture Note:</strong> SOP documents uploaded here are embedded into vector space and used by the AI Copilot for policy retrieval and answers. Executable approval decision rules are governed separately by the system's deterministic DMN engine.
+                </div>
+            </div>
             
             <div id="admin-content" style="position:relative">
                 <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(320px, 1fr));gap:24px;">

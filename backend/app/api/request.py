@@ -75,6 +75,34 @@ async def _run_ai_workflow(request_id: str, employee_id: str, employee_code: str
 
     except Exception as e:
         logger.error(f"AI workflow failed for {request_id}: {e}")
+        try:
+            client = get_mongodb_client()
+            try:
+                db = client.get_default_database()
+            except Exception:
+                db = client["sopforge"]
+
+            await db.sop_requests.update_one(
+                {"id": request_id},
+                {"$set": {
+                    "status": RequestStatus.ESCALATED.value,
+                    "decision": Decision.ROUTED.value,
+                    "evaluation_reasoning": f"Workflow pipeline encountered an unexpected error ({str(e)}). Request automatically routed to manager for human review.",
+                }}
+            )
+            from app.models.audit import AuditEventType
+            from app.services.request_service import create_audit_entry
+            await create_audit_entry(
+                db,
+                request_id=request_id,
+                event_type=AuditEventType.ESCALATED,
+                actor_id="system",
+                actor_role="system",
+                decision="routed",
+                details={"pipeline_error": str(e)},
+            )
+        except Exception as ex:
+            logger.error(f"Failed to record fail-closed recovery state for {request_id}: {ex}")
 
 
 @router.post("/submit", response_model=RequestResponse, status_code=status.HTTP_201_CREATED)
@@ -455,13 +483,20 @@ CRITICAL RULES:
             except Exception as e:
                 logger.error(f"Response generation failed: {e}")
         
+        # Enforce deterministic status header so LLM can never contradict workflow decision
+        if dec_str == "approved":
+            status_header = "✅ Request Approved."
+        elif status_str == "escalated" or dec_str == "routed":
+            status_header = "⏳ Request Sent for Manager Review. (It has not been approved yet.)"
+        elif dec_str == "rejected":
+            status_header = "❌ Request Declined."
+        else:
+            status_header = f"📋 Request Status: {status_str.upper()}"
+
         if not resp_msg:
-            if dec_str == "approved":
-                resp_msg = f"Your request has been approved. The system has recorded it."
-            elif status_str == "escalated":
-                resp_msg = f"I've forwarded your request to management for a quick review."
-            else:
-                resp_msg = f"Unfortunately, this request was declined based on current policy."
+            resp_msg = status_header
+        elif not resp_msg.startswith("✅") and not resp_msg.startswith("⏳") and not resp_msg.startswith("❌"):
+            resp_msg = f"{status_header}\n\n{resp_msg}"
 
         # Sanitize internal AI reasoning for employees to prevent leaking flags/policies
         if current_user.role.value == "employee":

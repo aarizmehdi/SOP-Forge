@@ -74,12 +74,13 @@ def create_app() -> FastAPI:
     )
 
     # ── Register API Routers ──
-    from app.api.auth import router as auth_router
-    from app.api.request import router as request_router
-    from app.api.review import router as review_router
     from app.api.admin import router as admin_router
     from app.api.audit import router as audit_router
+    from app.api.auth import router as auth_router
+    from app.api.evidence import router as evidence_router
     from app.api.incident import router as incident_router
+    from app.api.request import router as request_router
+    from app.api.review import router as review_router
     from app.api.speech import router as speech_router
 
     app.include_router(auth_router)
@@ -89,6 +90,7 @@ def create_app() -> FastAPI:
     app.include_router(audit_router)
     app.include_router(incident_router)
     app.include_router(speech_router)
+    app.include_router(evidence_router)
 
     # ── Health Check (must be before static mount) ──
     @app.get("/health", tags=["System"])

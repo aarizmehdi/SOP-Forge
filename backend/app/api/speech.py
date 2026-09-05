@@ -1,12 +1,15 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 import httpx
+
+from app.auth.jwt import get_current_user
 from app.config import get_settings
+from app.models.user import User
 
 router = APIRouter(prefix="/api/speech", tags=["Speech"])
 settings = get_settings()
 
 @router.get("/token")
-async def get_speech_token():
+async def get_speech_token(current_user: User = Depends(get_current_user)):
     """
     Get a temporary authentication token for AssemblyAI streaming API.
     """

@@ -176,21 +176,24 @@ class MockHRMSBridge(HRMSBridge):
     async def get_attendance(
         self, employee_id: str, start_date: date, end_date: date
     ) -> dict:
-        """Generate mock attendance data for the date range."""
+        """Generate deterministic mock attendance data for the date range."""
         await self._simulate_latency()
 
         records = []
         current = start_date
+        day_idx = 0
         while current <= end_date:
             if current.weekday() < 5:  # Mon-Fri
-                is_present = random.random() > 0.1  # 90% attendance
+                # Deterministic pattern: absent on 10th working day, present otherwise
+                is_present = (day_idx % 10) != 9
                 records.append({
                     "date": current.isoformat(),
                     "status": "present" if is_present else "absent",
                     "check_in": "09:05" if is_present else None,
                     "check_out": "18:10" if is_present else None,
-                    "hours_worked": round(random.uniform(7.5, 9.5), 1) if is_present else 0,
+                    "hours_worked": 8.0 if is_present else 0,
                 })
+                day_idx += 1
             current += timedelta(days=1)
 
         total_days = len(records)
@@ -202,37 +205,41 @@ class MockHRMSBridge(HRMSBridge):
             "total_working_days": total_days,
             "present_days": present_days,
             "absent_days": total_days - present_days,
-            "attendance_rate": round(present_days / total_days * 100, 1) if total_days > 0 else 0,
+            "attendance_rate": round(present_days / total_days * 100, 1) if total_days > 0 else 100.0,
             "records": records,
         }
 
     async def get_team_leaves(
         self, department_id: str, start_date: date, end_date: date
     ) -> list[dict]:
-        """Get approved/pending leaves for a team in a date range."""
+        """Get deterministic approved/pending leaves for a team in a date range."""
         await self._simulate_latency()
 
-        # Find employees in the department
-        dept_employees = [
-            emp_id for emp_id, emp in MOCK_EMPLOYEES.items()
-            if emp["department"].lower() == department_id.lower()
-        ]
-
         team_leaves = []
-        for emp_id in dept_employees:
-            # Randomly generate some existing leaves for realism
-            if random.random() > 0.6:
-                leave_start = start_date + timedelta(days=random.randint(0, 10))
-                leave_end = leave_start + timedelta(days=random.randint(1, 3))
-                team_leaves.append({
-                    "employee_id": emp_id,
-                    "employee_name": MOCK_EMPLOYEES[emp_id]["name"],
-                    "leave_type": random.choice(["annual", "casual", "sick"]),
-                    "start_date": leave_start.isoformat(),
-                    "end_date": min(leave_end, end_date).isoformat(),
-                    "status": random.choice(["approved", "pending"]),
-                })
-
+        # Fixed scenario: If Engineering department and dates overlap with Hassan Ali (EMP004) scenario
+        # generate 2 approved team leaves to demonstrate team overlap threshold rule
+        dept_lower = department_id.lower()
+        if dept_lower in ("engineering", "eng"):
+            # EMP004 (Hassan Ali) triggers overlap escalation scenario
+            # If start_date month is same or range includes active dates, return 2 fixed overlapping leaves
+            team_leaves = [
+                {
+                    "employee_id": "EMP002",
+                    "employee_name": "Omar Farooq",
+                    "leave_type": "annual",
+                    "start_date": start_date.isoformat(),
+                    "end_date": end_date.isoformat(),
+                    "status": "approved",
+                },
+                {
+                    "employee_id": "EMP006",
+                    "employee_name": "Bilal Hussain",
+                    "leave_type": "casual",
+                    "start_date": start_date.isoformat(),
+                    "end_date": end_date.isoformat(),
+                    "status": "approved",
+                },
+            ]
         return team_leaves
 
 

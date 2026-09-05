@@ -53,6 +53,10 @@ class SOPRequest(BaseModel):
     sla_deadline: datetime | None = None
     override_log: list | None = Field(default_factory=list)
 
+    # Evidence linkage
+    has_evidence: bool = False
+    evidence_list: list[dict] = Field(default_factory=list)
+
     # Timestamps
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
