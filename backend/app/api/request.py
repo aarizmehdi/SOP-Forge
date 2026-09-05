@@ -410,6 +410,25 @@ Respond with ONLY valid JSON (no markdown, no backticks):
             if not data.get("start_date"): missing.append("start_date")
             if not data.get("leave_type"): missing.append("type of leave")
             
+            # Check if duration/days/end_date is specified
+            days_val = data.get("days") or data.get("duration_days") or data.get("days_requested")
+            has_duration = bool(days_val or (data.get("end_date") and data.get("end_date") != data.get("start_date")))
+            
+            # Also check transcript if duration was mentioned
+            if not has_duration:
+                transcript_lower = history_transcript.lower()
+                import re
+                if re.search(r'\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s*(day|days|din)\b', transcript_lower) or any(w in transcript_lower for w in ["1 day", "one day", "half day", "today only"]):
+                    has_duration = True
+
+            if not has_duration:
+                return AssistantChatResponse(
+                    response_type="chat",
+                    message="How many days of leave do you need?",
+                    request_details=None,
+                    suggested_options=["1 day", "2 days", "3 days", "5 days"]
+                )
+
             if missing:
                 return AssistantChatResponse(
                     response_type="chat",
@@ -597,6 +616,16 @@ def _rule_based_brain(msg_lower: str, msg_clean: str, today_str: str, tomorrow_s
         has_reason = any(w in msg_lower for w in ["sick", "unwell", "fever", "vacation", "personal", "family", "emergency", "tabiyat"])
 
         if has_date and has_reason:
+            import re
+            has_dur = bool(re.search(r'\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s*(day|days|din)\b', msg_lower) or any(w in msg_lower for w in ["half day", "today only", "tomorrow only"]))
+            if not has_dur:
+                return {
+                    "action": "ASK",
+                    "message": "How many days of leave do you need?",
+                    "suggested_options": ["1 day", "2 days", "3 days", "5 days"],
+                    "request_type": "leave",
+                    "missing_fields": ["duration_days"]
+                }
             leave_cat = "sick" if any(w in msg_lower for w in ["sick", "unwell", "fever", "tabiyat"]) else "casual" if "personal" in msg_lower else "annual"
             start = today_str if any(w in msg_lower for w in ["today", "aj"]) else tomorrow_str
             return {
