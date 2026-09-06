@@ -24,19 +24,27 @@ from app.models.user import User, UserRole
 from app.schemas.request import AssistantChatRequest, RequestSubmission
 from app.services.candidate_extraction import Candidates, development_candidates
 from app.services.conversation_service import (
-    handle_message, merge_candidates, plan, start_conversation, status_message,
+    handle_message, merge_candidates, plan, repair_candidate, start_conversation,
+    status_message,
 )
-from app.services.normalization import normalize_leave_dates, normalize_submission, today_local
+from app.services.normalization import (
+    normalize_leave_dates, normalize_submission, working_days_inclusive,
+)
 from app.services.sop_service import search_policy, generate_embeddings
 from app.services.policy_retrieval import (
     MongoPythonPolicyRetrievalAdapter,
     PolicyRetrievalResult,
     PolicyRetrievalStatus,
 )
-from app.services.response_composition import is_safe_composition
+from app.services.response_composition import (
+    EvidenceResponseContext, ResponsePlan, TerminalResponseContext,
+    is_safe_composition,
+)
 from app.integrations.hrms_mock import MockHRMSBridge
 from orchestration.nodes.dmn_rule_engine import dmn_rule_engine
 from tests.fakes import Client, Database
+
+TEST_TODAY = date(2026, 9, 7)
 
 
 class RuntimeCase(unittest.IsolatedAsyncioTestCase):
@@ -48,7 +56,9 @@ class RuntimeCase(unittest.IsolatedAsyncioTestCase):
         self.patches = [patch.object(settings, 'deepseek_api_key', 'your-deepseek-api-key-here'),
                         patch.object(settings, 'openai_api_key', ''),
                         patch('app.database.mongodb_client', Client(self.db)),
-                        patch('app.integrations.hrms_mock._hrms_instance', MockHRMSBridge(latency_ms=0))]
+                        patch('app.integrations.hrms_mock._hrms_instance', MockHRMSBridge(latency_ms=0)),
+                        patch('app.services.normalization.today_local', return_value=TEST_TODAY),
+                        patch('app.services.conversation_service.today_local', return_value=TEST_TODAY)]
         for p in self.patches:
             p.start()
             self.addCleanup(p.stop)
@@ -62,7 +72,7 @@ class RuntimeCase(unittest.IsolatedAsyncioTestCase):
         self.addCleanup(p.stop)
         await self.db.sop_documents.insert_one({"id": "policy", "is_active": True, "category": "leave"})
         await self.db.sop_chunks.insert_one({"id": "leave-policy", "document_id": "policy", "chunk_index": 0,
-            "chunk_text": "Sick leave covers the employee's own illness. Casual leave covers urgent personal or family events such as a close relative's surgery. Annual leave covers planned vacation. Supporting medical evidence for three or more sick days requires manager review. Leave balance, notice period, blackout dates and team overlap determine approval criteria.",
+            "chunk_text": "Sick leave covers the employee's own medical recovery, illness, injury, and medical appointments. Casual leave covers urgent personal or family events such as a close relative's surgery. Annual leave covers planned vacation. Supporting medical evidence for three or more consecutive working days of sick leave requires manager review. Leave balances and entitlements are measured in working days; notice period, blackout dates and team overlap also determine approval criteria.",
             "embedding": [], "metadata": {"document_title": "Leave SOP", "category": "leave"}})
         self.id = None
 
@@ -106,7 +116,7 @@ class RuntimeCase(unittest.IsolatedAsyncioTestCase):
         result = await self.say("Four days.")
         draft = await self.draft()
         self.assertIn("fever", draft["fields"]["reason"])
-        self.assertEqual(draft["fields"]["end_date"], (today_local() + timedelta(days=4)).isoformat())
+        self.assertEqual(draft["fields"]["end_date"], (TEST_TODAY + timedelta(days=4)).isoformat())
         self.assertTrue(draft["evidence_required"])
         self.assertIn("upload", result.message.lower())
         self.assertTrue(result.upload_available)
@@ -184,7 +194,7 @@ class RuntimeCase(unittest.IsolatedAsyncioTestCase):
         result = await self.say("Actually make it 2 days.")
         self.assertEqual(result.request_details.submitted_data["duration_days"], 2)
         self.assertFalse((await self.draft())["evidence_required"])
-        self.assertEqual(result.request_details.submitted_data["end_date"], (today_local() + timedelta(days=2)).isoformat())
+        self.assertEqual(result.request_details.submitted_data["end_date"], (TEST_TODAY + timedelta(days=2)).isoformat())
 
     async def test_15_leave_type_correction(self):
         await self.say("I have fever and need leave tomorrow")
@@ -695,14 +705,22 @@ class RuntimeCase(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_v2_composer_cannot_leak_tokens_or_contradict_terminal(self):
+        ask_plan = ResponsePlan(
+            purpose="ask", expected_concept="start_date",
+            question="When should leave begin?", known_context={"leave_type": "sick"},
+        )
+        routed_plan = ResponsePlan(
+            purpose="terminal",
+            terminal=TerminalResponseContext(status="escalated", decision="routed", destination="manager_review"),
+        )
         self.assertFalse(is_safe_composition(
-            "Please supply start_date as YYYY-MM-DD", "ask", {}
+            "Please supply start_date as YYYY-MM-DD", ask_plan,
         ))
         self.assertFalse(is_safe_composition(
-            "Your request has been approved.", "terminal", {"decision": "routed"}
+            "Your request has been approved.", routed_plan,
         ))
         self.assertTrue(is_safe_composition(
-            "Your request has been sent for manager review.", "terminal", {"decision": "routed"}
+            "Your request has been sent for manager review. Use View Request to see its status.", routed_plan,
         ))
 
     async def test_v2_non_scalar_model_fact_is_clarified_safely(self):
@@ -713,6 +731,136 @@ class RuntimeCase(unittest.IsolatedAsyncioTestCase):
         ))
         self.assertNotIn("leave_type", draft.fields)
         self.assertEqual(draft.ambiguous_fields, ["leave_type"])
+
+    async def test_v2_partial_candidate_repair_merges_explicit_duration(self):
+        draft = RequestDraft(
+            employee_id="e", request_type="leave", missing_fields=["duration_days"],
+        )
+        model = Candidates(
+            intent="request", request_type="leave",
+            facts={"leave_type": "sick", "reason": "broken leg"},
+        )
+        repaired = repair_candidate("5 days", draft, model)
+        self.assertEqual(repaired.facts["duration_days"], 5)
+        self.assertEqual(repaired.facts["reason"], "broken leg")
+
+    async def test_v2_explicit_model_correction_wins_over_parser_supplement(self):
+        draft = RequestDraft(
+            employee_id="e", request_type="leave", missing_fields=["duration_days"],
+        )
+        repaired = repair_candidate(
+            "5 days", draft,
+            Candidates(intent="request", request_type="leave", corrections={"duration_days": 4}),
+        )
+        self.assertNotIn("duration_days", repaired.facts)
+        self.assertEqual(repaired.corrections["duration_days"], 4)
+
+    async def test_v2_last_required_explanation_survives_imperfect_intent(self):
+        await self.say("I need annual leave tomorrow for one day")
+        draft = await self.draft()
+        self.assertEqual(draft["missing_fields"], ["reason"])
+        with patch(
+            "app.services.conversation_service.extract_candidates",
+            new=AsyncMock(return_value=Candidates(intent="general")),
+        ):
+            result = await self.say("A family event I need to attend")
+        self.assertEqual(
+            result.request_details.submitted_data["reason"],
+            "A family event I need to attend",
+        )
+
+    async def test_v2_broken_leg_is_sick_leave_and_reason_is_retained(self):
+        await self.say("I need leave")
+        result = await self.say("I fractured my ankle, so I need leave")
+        draft = await self.draft()
+        self.assertEqual(draft["fields"]["leave_type"], "sick")
+        self.assertIn("fractured my ankle", draft["fields"]["reason"].lower())
+        self.assertIn("begin", result.message.lower())
+        self.assertNotIn("reason", result.message.lower())
+
+    async def test_v2_typo_tolerant_natural_date_range_uses_working_days(self):
+        result = await self.say(
+            "I need sick leave because my leg is broken from tommorow till 20 septemeber"
+        )
+        draft = await self.draft()
+        self.assertEqual(draft["fields"]["start_date"], "2026-09-08")
+        self.assertEqual(draft["fields"]["end_date"], "2026-09-20")
+        self.assertEqual(draft["fields"]["duration_days"], 9)
+        self.assertEqual(result.ui_state.value, "EVIDENCE_GATE")
+
+    async def test_v2_five_days_is_retained_and_not_reasked(self):
+        await self.say("My leg is broken and I need leave")
+        await self.say("I need it from tomorrow")
+        model = Candidates(
+            intent="request", request_type="leave", facts={"reason": "broken leg"},
+        )
+        with patch(
+            "app.services.conversation_service.extract_candidates",
+            new=AsyncMock(return_value=model),
+        ):
+            result = await self.say("5 days")
+        draft = await self.draft()
+        self.assertEqual(draft["fields"]["duration_days"], 5)
+        self.assertEqual(result.ui_state.value, "EVIDENCE_GATE")
+        self.assertIn("evidence", result.message.lower())
+        self.assertNotRegex(result.message.lower(), r"how (?:long|many)|kitne din|duration\?")
+
+    async def test_v2_response_validation_is_purpose_specific(self):
+        evidence = ResponsePlan(
+            purpose="evidence_gate",
+            evidence=EvidenceResponseContext(category="sick", duration_days=5),
+        )
+        self.assertTrue(is_safe_composition(
+            "Supporting evidence is required for this sick leave. Choose Upload Evidence or Skip Evidence.",
+            evidence,
+        ))
+        self.assertFalse(is_safe_composition(
+            "How many days do you need? Upload Evidence or Skip Evidence.", evidence,
+        ))
+        duration = ResponsePlan(
+            purpose="ask", expected_concept="duration_days",
+            question="How much time off do you need?", known_context={"leave_type": "sick"},
+        )
+        self.assertTrue(is_safe_composition("How many working days do you need?", duration))
+        self.assertFalse(is_safe_composition("When should the leave begin?", duration))
+
+    async def test_v2_terminal_validation_rejects_promises_and_chat_invites(self):
+        terminal = ResponsePlan(
+            purpose="terminal",
+            terminal=TerminalResponseContext(status="escalated", decision="routed", destination="manager_review"),
+        )
+        self.assertFalse(is_safe_composition(
+            "Your manager will be in touch. View Request for status.", terminal,
+        ))
+        self.assertFalse(is_safe_composition(
+            "Sent for review. If you have any questions, feel free to reach out. View Request for status.",
+            terminal,
+        ))
+
+    async def test_v2_working_day_duration_skips_weekend(self):
+        data = normalize_leave_dates(
+            {"start_date": "2026-09-11", "duration_days": 3}, date(2026, 9, 7),
+        )
+        self.assertEqual(data["end_date"], "2026-09-15")
+        self.assertEqual(data["duration_days"], 3)
+        self.assertEqual(working_days_inclusive(date(2026, 9, 11), date(2026, 9, 15)), 3)
+
+    async def test_v2_weekend_range_counts_only_working_days_for_dmn(self):
+        state = {
+            "request_type": "leave",
+            "submitted_data": {
+                "leave_type": "annual", "start_date": "2026-09-11",
+                "end_date": "2026-09-15", "reason": "vacation",
+            },
+            "live_data": {
+                "employee_profile": {"found": True},
+                "leave_balance": {"balances": {"annual": {"remaining": 3}}, "blackout_dates": []},
+                "team_leaves_overlap": [],
+            },
+        }
+        result = await dmn_rule_engine(state)
+        self.assertEqual(result["decision"], "approved")
+        self.assertIn("3 requested day", result["evaluation_reasoning"])
 
 
 if __name__ == '__main__':
