@@ -12,14 +12,14 @@ The mounted chat sends message + conversation ID. MongoDB owns the draft. A sing
 
 Traditional forms use the same normalizer and governed graph. Neither chat nor forms calls the legacy extraction node. Evidence collection happens on drafts; required evidence, attached or omitted, requires human review. No new infrastructure or vector database was introduced.
 
-See [the runtime architecture](SOP_FORGE_PHASE1_RUNTIME_ARCHITECTURE.md) for the state machine and trust boundaries.
+See [the runtime architecture](../architecture/SOP_FORGE_PHASE1_RUNTIME_ARCHITECTURE.md) for the state machine and trust boundaries.
 
 ## C. Files Added
 
 | File | Responsibility |
 |---|---|
-| `SOP_FORGE_PHASE1_RUNTIME_ARCHITECTURE.md` | Code-derived design, created before implementation and updated to match the implementation. |
-| `SOP_FORGE_CONVERSATION_ENGINE_REFACTOR_REPORT.md` | This implementation and verification record. |
+| `docs/architecture/SOP_FORGE_PHASE1_RUNTIME_ARCHITECTURE.md` | Code-derived design, created before implementation and updated to match the implementation. |
+| `docs/reports/SOP_FORGE_CONVERSATION_ENGINE_REFACTOR_REPORT.md` | This implementation and verification record. |
 | `backend/app/models/draft.py` | Owned draft schema, transient states, revision, preflight and last server question. |
 | `backend/app/services/candidate_extraction.py` | One DeepSeek candidate extraction; clearly limited offline development interpreter. |
 | `backend/app/services/normalization.py` | Date arithmetic, field families and shared request-schema boundary. |
@@ -29,10 +29,7 @@ See [the runtime architecture](SOP_FORGE_PHASE1_RUNTIME_ARCHITECTURE.md) for the
 | `backend/tests/test_conversation_engine.py` | 54 regression tests, including all 26 numbered specification scenarios and final hardening coverage. |
 | `backend/tests/frontend_contract.test.js` | Executable JS API, file authorization and status-display contracts. |
 | `backend/tests/redteam_conversations.py` | 30 engineer-authored live-provider conversation exercises and transcript capture. |
-| `backend/tests/probe_runtime.py` | Read-only dependency/provider/database availability check without credential output. |
-| `backend/tests/probe_interpreter.py` | Synthetic interpreter diagnostic without credential output. |
-| `backend/tests/migrate_legacy_evidence.py` | Dry-run-by-default, idempotent repair for historical invalid evidence lifecycle values. |
-| `test-results/` | Final regression/frontend logs, final live transcripts and earlier live runs documenting discovered failures. |
+| `scripts/migrations/migrate_legacy_evidence.py` | Dry-run-by-default, idempotent repair for historical invalid evidence lifecycle values. |
 
 ## D. Files Modified
 
@@ -184,7 +181,7 @@ An additional offline development-parser diagnostic completed **29/30**: it aske
 
 **Live integrations:** DeepSeek PASS. Configured MongoDB probe unavailable with ServerSelectionTimeoutError both inside and outside the sandbox. Real OpenAI embeddings NOT TESTED because no embedding key was configured. Existing installed runtime versions were Pydantic 2.13.4, FastAPI 0.133.1, LangGraph 1.2.11, langchain-openai 1.5.1 and Motor 3.7.1; a fresh dependency install against all manifests was not performed.
 
-Evidence: [Python log](test-results/regression.log), [frontend log](test-results/frontend.log), [final live transcripts](test-results/redteam-live-deepseek.json), [initial failed live sweep](test-results/redteam-live-deepseek-initial.json), [second sweep](test-results/redteam-live-deepseek-second.json).
+Generated test logs and conversation transcripts are intentionally excluded from version control. The durable regression runners and assertions remain in `backend/tests/`; results are summarized above.
 
 ## M. Final Hardening Review
 

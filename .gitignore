@@ -36,6 +36,7 @@ redisdata/
 .pytest_cache/
 htmlcov/
 .coverage
+/test-results/
 
 # Alembic
 alembic/versions/__pycache__/

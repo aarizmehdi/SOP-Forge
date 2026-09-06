@@ -55,6 +55,6 @@ Interrupted draft operations become recoverable on a later turn after five minut
 - Engineering overlap demo uses two approved teammates on 2026-10-12 through 2026-10-14 only; requester is excluded.
 - No distributed jobs or new infrastructure. Process-crash recovery and external provider/browser validation must be reported with actual test evidence.
 - Environment configuration: `ORGANIZATION_TIMEZONE=Asia/Karachi`, `SICK_EVIDENCE_THRESHOLD_DAYS=3`. Calendar bounds are 366 days; reimbursement policy amounts are USD and no currency conversion is introduced.
-- `python -m tests.migrate_legacy_evidence` (from backend) is a dry-run migration for historical invalid awaiting_evidence statuses/decisions. `--apply` explicitly routes those legacy requests to review. It is not run automatically against application data.
+- `python scripts/migrations/migrate_legacy_evidence.py` (from the repository root) is a dry-run migration for historical invalid awaiting_evidence statuses/decisions. `--apply` explicitly routes those legacy requests to review. It is not run automatically against application data.
 - Existing dormant extraction/evaluation modules remain outside the active graph. Neither chat nor traditional forms calls them.
 - Chat preserves identity across turns in the mounted page. Navigation/reload starts a fresh UI conversation; draft restoration UI and a retention policy are deferred. The server still enforces ownership for every saved conversation ID.

@@ -1,12 +1,18 @@
 """Explicit, idempotent repair of old invalid request lifecycle values.
 
-Read-only by default. Run from backend: python -m tests.migrate_legacy_evidence
-Apply only to the intended database: python -m tests.migrate_legacy_evidence --apply
+Read-only by default. Run from the repository root:
+python scripts/migrations/migrate_legacy_evidence.py
+Apply only to the intended database:
+python scripts/migrations/migrate_legacy_evidence.py --apply
 Never auto-approves. Legacy pending-evidence requests become human review requests.
 """
 import argparse
 import asyncio
+import sys
 from datetime import datetime, timezone
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 
 from app.database import get_mongodb_client
 from app.models.audit import AuditEventType

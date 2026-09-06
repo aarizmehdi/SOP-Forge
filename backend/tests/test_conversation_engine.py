@@ -484,7 +484,12 @@ class RuntimeCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.draft())["state"], "awaiting_evidence")
 
     async def test_legacy_migration_is_explicit_and_idempotent(self):
-        from tests.migrate_legacy_evidence import migrate
+        from importlib.util import module_from_spec, spec_from_file_location
+        migration_path = Path(__file__).resolve().parents[2] / "scripts" / "migrations" / "migrate_legacy_evidence.py"
+        spec = spec_from_file_location("migrate_legacy_evidence", migration_path)
+        module = module_from_spec(spec)
+        spec.loader.exec_module(module)
+        migrate = module.migrate
         await self.db.sop_requests.insert_one({"id": "legacy", "status": "awaiting_evidence", "decision": "awaiting_evidence"})
         self.assertEqual((await migrate(self.db))["changed"], 0)
         self.assertEqual((await migrate(self.db, apply=True))["changed"], 1)
