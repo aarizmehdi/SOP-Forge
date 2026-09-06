@@ -29,7 +29,12 @@ const API = (() => {
 
             if (!response.ok) {
                 const error = await response.json().catch(() => ({ detail: 'Request failed' }));
-                throw new Error(error.detail || `HTTP ${response.status}`);
+                const detail = error.detail;
+                const message = typeof detail === 'object' ? detail.message : detail;
+                const problem = new Error(message || `HTTP ${response.status}`);
+                problem.code = typeof detail === 'object' ? detail.code : null;
+                problem.details = detail;
+                throw problem;
             }
 
             return await response.json();
@@ -41,6 +46,23 @@ const API = (() => {
         }
     }
 
+    async function uploadChatEvidence(conversationId, file) {
+        const form = new FormData();
+        form.append('file', file);
+        const token = localStorage.getItem('sopforge_token');
+        const response = await fetch(`${BASE_URL}/api/evidence/draft/${conversationId}`, {
+            method: 'POST',
+            headers: token ? {Authorization: `Bearer ${token}`} : {},
+            body: form,
+        });
+        const result = await response.json().catch(() => ({detail: 'Upload failed'}));
+        if (!response.ok) {
+            const detail = result.detail;
+            throw new Error(typeof detail === 'object' ? detail.message : detail);
+        }
+        return result;
+    }
+
     return {
         // Auth
         login: (email, password) => request('POST', '/api/auth/login', { email, password }),
@@ -48,7 +70,10 @@ const API = (() => {
 
         // Requests
         submitRequest: (data) => request('POST', '/api/request/submit', data),
-        sendChatAssistant: (message, conversation_id = null) => request('POST', '/api/request/assistant', { message, conversation_id }),
+        startChatConversation: domain => request('POST', '/api/request/assistant/start', {domain}),
+        sendChatAssistant: (message, conversation_id) => request('POST', '/api/request/assistant', {message, conversation_id}),
+        uploadChatEvidence,
+        skipChatEvidence: conversationId => request('POST', `/api/evidence/draft/${conversationId}/skip`),
         getMyRequests: (limit = 50) => request('GET', `/api/request/my?limit=${limit}`),
         getLeaveBalances: () => request('GET', '/api/request/leave-balances'),
         getRequest: (id) => request('GET', `/api/request/${id}`),

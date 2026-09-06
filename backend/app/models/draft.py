@@ -13,11 +13,31 @@ class DraftState(str, Enum):
     ATTACHING_EVIDENCE = "attaching_evidence"
     SUBMITTING = "submitting"
     SUBMITTED = "submitted"
+    CLOSED = "closed"
+
+
+class ConversationDomain(str, Enum):
+    LEAVE_HR = "leave_hr"
+    EXPENSES_FINANCE = "expenses_finance"
+    IT_SYSTEM_ACCESS = "it_system_access"
+    POLICIES_GENERAL = "policies_general"
+
+
+class ConversationUIState(str, Enum):
+    ACTIVE_CHAT = "ACTIVE_CHAT"
+    EVIDENCE_GATE = "EVIDENCE_GATE"
+    TERMINAL = "TERMINAL"
+
+
+class ConversationTurn(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(max_length=4000)
 
 
 class RequestDraft(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     employee_id: str
+    domain: ConversationDomain = ConversationDomain.LEAVE_HR
     request_type: Literal["leave", "reimbursement", "it_access"] | None = None
     fields: dict = Field(default_factory=dict)
     date_basis: str | None = None
@@ -32,5 +52,8 @@ class RequestDraft(BaseModel):
     request_id: str | None = None
     preflight: dict = Field(default_factory=dict)
     last_question: str | None = None
+    recent_turns: list[ConversationTurn] = Field(default_factory=list)
+    language_confidence: float = 0.0
+    terminal: dict | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

@@ -10,6 +10,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 
 from app.models.request import Decision, RequestStatus, RequestType
+from app.models.draft import ConversationDomain, ConversationUIState
 
 
 # ── Submission ──
@@ -118,17 +119,24 @@ class RequestStatusResponse(BaseModel):
     sla_deadline: datetime | None
 
 
-class ChatMessage(BaseModel):
-    """A single turn in the conversation."""
-    role: str = Field(..., description="user | assistant")
-    content: str
+class ConversationStartRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+    domain: ConversationDomain
+
+
+class TerminalResult(BaseModel):
+    request_id: UUID
+    status: RequestStatus
+    decision: Decision
+    destination: Literal["manager_review", "human_review"] | None = None
 
 
 class AssistantChatRequest(BaseModel):
     """Payload for conversational AI assistant."""
+    model_config = {"extra": "forbid"}
     message: str = Field(..., min_length=1, max_length=4000)
-    conversation_id: UUID | None = None
-    history: list[ChatMessage] = Field(default_factory=list, description="Full conversation transcript for multi-turn memory")
+    conversation_id: UUID
+    history: list[dict] = Field(default_factory=list, exclude=True, deprecated=True)
 
 
 class AssistantChatResponse(BaseModel):
@@ -140,3 +148,9 @@ class AssistantChatResponse(BaseModel):
     draft_state: str | None = None
     upload_available: bool = False
     retrieval_mode: str | None = None
+    ui_state: ConversationUIState
+    allowed_actions: list[Literal[
+        "send_message", "use_microphone", "upload_evidence", "skip_evidence",
+        "view_request", "start_new_conversation"
+    ]] = Field(default_factory=list)
+    terminal: TerminalResult | None = None

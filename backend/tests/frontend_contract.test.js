@@ -117,3 +117,66 @@ test('overridden decisions retain truthful employee status', () => {
     assert.equal(sandbox.statusInfo('overridden', 'rejected').label, 'Declined');
     assert.equal(sandbox.statusInfo('escalated', 'routed').label, 'Under Review');
 });
+
+function loadChatAssistant() {
+    const controls = {innerHTML: ''};
+    const sandbox = {
+        Auth: {getUser: () => ({name: 'Test Employee'}), getInitials: () => 'TE'},
+        API: {}, App: {toast() {}}, alert() {}, FormData: class {},
+        document: {
+            getElementById: id => id === 'ca-controls' ? controls : null,
+            querySelectorAll: () => [],
+            querySelector: () => null,
+            createElement: () => ({innerHTML: '', className: ''}),
+        },
+        window: {},
+    };
+    vm.createContext(sandbox);
+    vm.runInContext(fs.readFileSync('frontend/js/components/chat-assistant.js', 'utf8') + '\nglobalThis.chat = ChatAssistant;', sandbox);
+    return {chat: sandbox.chat, controls, sandbox};
+}
+
+test('domain selection renders four choices without a composer', async () => {
+    const {chat} = loadChatAssistant();
+    const container = {innerHTML: ''};
+    await chat.render(container);
+    assert.equal((container.innerHTML.match(/data-domain-choice=/g) || []).length, 4);
+    assert.doesNotMatch(container.innerHTML, /id="chat-input"/);
+    assert.equal(chat.getState().uiState, 'DOMAIN_SELECTION');
+});
+
+test('evidence gate renders exactly upload and skip primary actions', () => {
+    const {chat, controls} = loadChatAssistant();
+    chat.setState('EVIDENCE_GATE', ['upload_evidence', 'skip_evidence']);
+    assert.equal((controls.innerHTML.match(/data-primary-action=/g) || []).length, 2);
+    assert.match(controls.innerHTML, />Upload Evidence</);
+    assert.match(controls.innerHTML, />Skip Evidence</);
+    assert.doesNotMatch(controls.innerHTML, /id="chat-input"|chat-mic-btn|chat-send-btn/);
+});
+
+test('terminal controls omit composer and title comes from authoritative result', () => {
+    const {chat, controls} = loadChatAssistant();
+    chat.setState('TERMINAL', ['view_request', 'start_new_conversation']);
+    assert.doesNotMatch(controls.innerHTML, /id="chat-input"|chat-mic-btn|chat-send-btn/);
+    assert.equal(chat.terminalTitle({status: 'escalated', decision: 'routed'}), 'Sent for Manager Review');
+    assert.equal(chat.terminalTitle({status: 'resolved', decision: 'approved'}), 'Approved');
+});
+
+test('API starts domains and skips evidence through explicit transactions', async () => {
+    const calls = [];
+    const sandbox = {
+        window: {location: {origin: 'http://test'}},
+        localStorage: {getItem: () => 'test-token'},
+        fetch: async (url, opts) => {
+            calls.push({url, body: opts.body ? JSON.parse(opts.body) : null});
+            return {ok: true, status: 200, json: async () => ({})};
+        },
+    };
+    vm.createContext(sandbox);
+    vm.runInContext(fs.readFileSync('frontend/js/api.js', 'utf8') + '\nglobalThis.api = API;', sandbox);
+    await sandbox.api.startChatConversation('leave_hr');
+    await sandbox.api.skipChatEvidence('conversation-id');
+    assert.deepEqual(calls[0].body, {domain: 'leave_hr'});
+    assert.equal(calls[1].url, 'http://test/api/evidence/draft/conversation-id/skip');
+    assert.equal(calls[1].body, null);
+});

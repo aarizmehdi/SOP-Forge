@@ -27,15 +27,43 @@ def resolve_date(value, today=None):
     if not isinstance(value, str):
         raise ValueError("Please give a date or weekday.")
     value = value.lower().strip().rstrip(".")
-    offsets = {"today": 0, "aaj": 0, "aj": 0, "tomorrow": 1, "kal": 1, "day after tomorrow": 2, "parso": 2}
+    offsets = {"yesterday": -1, "today": 0, "aaj": 0, "aj": 0, "tomorrow": 1, "kal": 1, "day after tomorrow": 2, "parso": 2}
     if value in offsets:
         return today + timedelta(days=offsets[value])
     weekdays = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
-    if value in weekdays:
-        return today + timedelta(days=(weekdays.index(value) - today.weekday()) % 7)
-    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
-        raise ValueError("Please give the date as YYYY-MM-DD, today, tomorrow, or a weekday.")
-    return date.fromisoformat(value)
+    weekday_match = re.fullmatch(r"(?:(next|this)\s+)?(" + "|".join(weekdays) + r")", value)
+    if weekday_match:
+        qualifier, weekday = weekday_match.groups()
+        distance = (weekdays.index(weekday) - today.weekday()) % 7
+        if qualifier == "next" and distance == 0:
+            distance = 7
+        return today + timedelta(days=distance)
+    if re.fullmatch(r"\d{1,2}/\d{1,2}(?:/\d{2,4})?", value):
+        raise ValueError("ambiguous_numeric_date")
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        return date.fromisoformat(value)
+    months = {
+        "jan": 1, "january": 1, "feb": 2, "february": 2, "mar": 3, "march": 3,
+        "apr": 4, "april": 4, "may": 5, "jun": 6, "june": 6, "jul": 7,
+        "july": 7, "aug": 8, "august": 8, "sep": 9, "sept": 9,
+        "september": 9, "oct": 10, "october": 10, "nov": 11, "november": 11,
+        "dec": 12, "december": 12,
+    }
+    month_names = "|".join(months)
+    day_first = re.fullmatch(
+        rf"(\d{{1,2}})(?:st|nd|rd|th)?\s+({month_names})(?:\s+(this year|\d{{4}}))?", value
+    )
+    month_first = re.fullmatch(
+        rf"({month_names})\s+(\d{{1,2}})(?:st|nd|rd|th)?(?:,?\s+(this year|\d{{4}}))?", value
+    )
+    if day_first:
+        day, month_name, year_text = day_first.groups()
+    elif month_first:
+        month_name, day, year_text = month_first.groups()
+    else:
+        raise ValueError("unrecognized_date")
+    year = today.year if not year_text or year_text == "this year" else int(year_text)
+    return date(year, months[month_name], int(day))
 
 
 def normalize_leave_dates(fields, today=None):
