@@ -18,7 +18,7 @@ class RequestState(TypedDict, total=False):
     
     Extended with:
     - live_data: fetched from HRMS bridge
-    - evaluation_reasoning: LLM's chain-of-thought explanation
+    - evaluation_reasoning: concise deterministic evaluation reasons
     - error: any error encountered during processing
     """
 
@@ -38,6 +38,8 @@ class RequestState(TypedDict, total=False):
     confidence: float
     evaluation_reasoning: str
     extracted_variables: dict
+    evidence_present: bool
+    policy_unavailable: bool
     dmn_result: bool
 
     # ── Lifecycle ──

@@ -219,7 +219,7 @@ class MockHRMSBridge(HRMSBridge):
         # Fixed scenario: If Engineering department and dates overlap with Hassan Ali (EMP004) scenario
         # generate 2 approved team leaves to demonstrate team overlap threshold rule
         dept_lower = department_id.lower()
-        if dept_lower in ("engineering", "eng"):
+        if dept_lower in ("engineering", "eng") and start_date <= date(2026, 10, 14) and end_date >= date(2026, 10, 12):
             # EMP004 (Hassan Ali) triggers overlap escalation scenario
             # If start_date month is same or range includes active dates, return 2 fixed overlapping leaves
             team_leaves = [
@@ -227,16 +227,16 @@ class MockHRMSBridge(HRMSBridge):
                     "employee_id": "EMP002",
                     "employee_name": "Omar Farooq",
                     "leave_type": "annual",
-                    "start_date": start_date.isoformat(),
-                    "end_date": end_date.isoformat(),
+                    "start_date": "2026-10-12",
+                    "end_date": "2026-10-14",
                     "status": "approved",
                 },
                 {
                     "employee_id": "EMP006",
                     "employee_name": "Bilal Hussain",
                     "leave_type": "casual",
-                    "start_date": start_date.isoformat(),
-                    "end_date": end_date.isoformat(),
+                    "start_date": "2026-10-12",
+                    "end_date": "2026-10-14",
                     "status": "approved",
                 },
             ]

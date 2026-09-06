@@ -71,11 +71,14 @@ async def audit_log(state: RequestState) -> dict:
             },
         )
         
+        dmn_entry = entry.model_copy(update={"id": str(uuid.uuid4()), "event_type": AuditEventType.DMN_EVALUATED})
+        await db.audit_logs.insert_one(dmn_entry.model_dump(mode="json"))
         await db.audit_logs.insert_one(entry.model_dump(mode="json"))
         logger.info(f"Audit Log: Entry recorded for request {request_id}")
 
     except Exception as e:
         logger.error(f"Audit Log: Failed to write audit entry: {e}")
+        raise
 
     return {
         "status": status,

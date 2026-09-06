@@ -1,214 +1,136 @@
-"""
-SOP Forge — Evidence API router.
-Handles file uploads and secure viewing of evidence documents.
-"""
-
-import logging
-import os
+"""Owned draft attachments and authorized human evidence review."""
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
-from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.auth.jwt import get_current_user
 from app.database import get_db
+from app.models.audit import AuditEventType
+from app.models.draft import DraftState
 from app.models.evidence import Evidence
 from app.models.user import User
+from app.services.audit_service import create_audit_entry
 
-logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/evidence", tags=["Evidence"])
-
 UPLOAD_DIR = Path("uploads/evidence")
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-
-ALLOWED_MIME_TYPES = {
-    "application/pdf",
-    "image/jpeg",
-    "image/jpg",
-    "image/png",
-}
+ALLOWED_MIME_TYPES = {"application/pdf", "image/jpeg", "image/jpg", "image/png"}
 ALLOWED_EXTENSIONS = {".pdf", ".jpeg", ".jpg", ".png"}
-MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB max limit
+MAX_FILE_SIZE = 5 * 1024 * 1024
+
+
+async def authorize_evidence(db, owner_id, user):
+    if str(owner_id) == str(user.id):
+        return
+    role = user.role.value
+    if role in {"admin", "executive"}:
+        return
+    if role == "manager" and user.department_id:
+        employee = await db.users.find_one({"id": str(owner_id)})
+        if employee and employee.get("department_id") == user.department_id:
+            return
+    raise HTTPException(403, "You cannot access evidence for this employee.")
+
+
+async def store_file(db, file, user, *, request_id=None, draft_id=None):
+    filename = Path((file.filename or "file.bin").replace("\\", "/")).name
+    ext = Path(filename).suffix.lower()
+    if ext not in ALLOWED_EXTENSIONS or file.content_type not in ALLOWED_MIME_TYPES:
+        raise HTTPException(400, "Allowed formats are PDF, JPEG and PNG (up to 5MB).")
+    content = await file.read(MAX_FILE_SIZE + 1)
+    if not content or len(content) > MAX_FILE_SIZE:
+        raise HTTPException(400, "The file must be nonempty and no larger than 5MB.")
+    valid_signature = ((ext == ".pdf" and content.startswith(b"%PDF-")) or
+                       (ext in {".jpg", ".jpeg"} and content.startswith(b"\xff\xd8\xff")) or
+                       (ext == ".png" and content.startswith(b"\x89PNG\r\n\x1a\n")))
+    if not valid_signature:
+        raise HTTPException(400, "The file content does not match the selected format.")
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    stored = uuid.uuid4().hex + ext
+    path = UPLOAD_DIR / stored
+    path.write_bytes(content)
+    entry = Evidence(request_id=request_id, draft_id=draft_id, original_filename=filename,
+                     stored_filename=stored, storage_path=str(path.resolve()), content_type=file.content_type,
+                     size_bytes=len(content), uploaded_by=user.id)
+    try:
+        await db.evidence.insert_one(entry.model_dump(mode="json"))
+    except Exception:
+        path.unlink(missing_ok=True)
+        raise
+    await create_audit_entry(db, request_id=request_id, event_type=AuditEventType.EVIDENCE_ATTACHED,
+                             actor_id=user.id, actor_role=user.role.value,
+                             details={"evidence_id": entry.id, "draft_id": draft_id, "verified": False})
+    return entry
+
+
+def public_metadata(entry):
+    data = entry.model_dump(mode="json") if isinstance(entry, Evidence) else dict(entry)
+    for key in ("_id", "storage_path", "stored_filename"):
+        data.pop(key, None)
+    return data
+
+
+@router.post("/draft/{conversation_id}")
+async def upload_draft_evidence(conversation_id: str, file: UploadFile = File(...),
+                                db=Depends(get_db), current_user: User = Depends(get_current_user)):
+    from app.services.conversation_service import load_draft, save_draft, handle_message
+    from app.schemas.request import AssistantChatRequest
+    draft = await load_draft(db, conversation_id, current_user.id)
+    if draft.state != DraftState.AWAITING_EVIDENCE or draft.evidence_choice != "upload":
+        raise HTTPException(409, "This conversation is not waiting for an attachment.")
+    draft.state = DraftState.ATTACHING_EVIDENCE
+    await save_draft(db, draft)
+    try:
+        await store_file(db, file, current_user, draft_id=draft.id)
+    finally:
+        draft.state = DraftState.AWAITING_EVIDENCE
+        await save_draft(db, draft)
+    return await handle_message(db, current_user, AssistantChatRequest(
+        message="The attachment has been uploaded.", conversation_id=draft.id), attachment_ready=True)
 
 
 @router.post("/upload/{request_id}")
-async def upload_evidence(
-    request_id: str,
-    file: UploadFile = File(...),
-    db: AsyncIOMotorDatabase = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """
-    Upload evidence file for a specific request.
-    Validates MIME type, extension, and 5MB size limit.
-    Automatically re-evaluates DMN workflow once evidence is attached.
-    """
-    # Verify request exists
-    sop_req = await db.sop_requests.find_one({"id": request_id})
-    if not sop_req:
-        raise HTTPException(status_code=404, detail=f"Request {request_id} not found")
-
-    # Validate ownership or manager permission
-    if current_user.role.value == "employee" and sop_req.get("employee_id") != current_user.id:
-        raise HTTPException(status_code=403, detail="You can only attach evidence to your own request")
-
-    # Validate file extension
-    filename = file.filename or "file.bin"
-    ext = Path(filename).suffix.lower()
-    if ext not in ALLOWED_EXTENSIONS or file.content_type not in ALLOWED_MIME_TYPES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid file type '{file.content_type}'. Allowed formats: PDF, JPEG, PNG (max 5MB).",
-        )
-
-    # Read and check size
-    content = await file.read()
-    if len(content) == 0:
-        raise HTTPException(status_code=400, detail="Uploaded file is empty")
-    if len(content) > MAX_FILE_SIZE:
-        raise HTTPException(status_code=400, detail="File size exceeds 5MB limit")
-
-    # Save to disk securely
-    unique_filename = f"{uuid.uuid4().hex}_{filename}"
-    file_path = UPLOAD_DIR / unique_filename
-    with open(file_path, "wb") as f:
-        f.write(content)
-
-    # Create Evidence model
-    evidence_entry = Evidence(
-        id=str(uuid.uuid4()),
-        request_id=request_id,
-        original_filename=filename,
-        stored_filename=unique_filename,
-        storage_path=str(file_path),
-        content_type=file.content_type,
-        size_bytes=len(content),
-        uploaded_by=current_user.id,
-    )
-    evidence_dict = evidence_entry.model_dump(mode="json")
-    await db.evidence.insert_one(evidence_dict)
-
-    # Update request document with evidence metadata
-    existing_list = sop_req.get("evidence_list", [])
-    existing_list.append({
-        "id": evidence_entry.id,
-        "filename": filename,
-        "content_type": file.content_type,
-        "size_bytes": len(content),
-        "uploaded_at": evidence_entry.uploaded_at.isoformat(),
-    })
-
-    # Re-evaluate DMN workflow now that evidence is attached
-    from orchestration.graph import run_request_workflow
-    eval_result = await run_request_workflow(
-        request_id=request_id,
-        employee_id=sop_req.get("employee_id"),
-        employee_code=current_user.employee_id,
-        request_type=sop_req.get("request_type", "leave"),
-        submitted_data=sop_req.get("submitted_data", {}),
-    )
-
-    new_decision = eval_result.get("decision", "routed")
-    new_status = eval_result.get("status", "escalated")
-    new_reasoning = eval_result.get("evaluation_reasoning", "")
-
-    await db.sop_requests.update_one(
-        {"id": request_id},
-        {"$set": {
-            "has_evidence": True,
-            "evidence_list": existing_list,
-            "decision": new_decision,
-            "status": new_status,
-            "evaluation_reasoning": new_reasoning,
-        }}
-    )
-
-    logger.info(f"Evidence {filename} uploaded for request {request_id} by {current_user.name}. Status updated to {new_status}.")
-    return {
-        "status": "success",
-        "message": f"Evidence '{filename}' attached successfully. Request workflow updated.",
-        "evidence": evidence_dict,
-        "new_request_status": new_status,
-        "new_decision": new_decision,
-    }
+async def upload_evidence(request_id: str, file: UploadFile = File(...),
+                          db=Depends(get_db), current_user: User = Depends(get_current_user)):
+    request = await db.sop_requests.find_one({"id": request_id})
+    if not request:
+        raise HTTPException(404, "Request not found")
+    await authorize_evidence(db, request["employee_id"], current_user)
+    if request["status"] not in {"in_progress", "escalated"}:
+        raise HTTPException(409, "Evidence cannot change a finalized request.")
+    entry = await store_file(db, file, current_user, request_id=request_id)
+    await db.sop_requests.update_one({"id": request_id, "status": {"$in": ["in_progress", "escalated"]}},
+        {"$set": {"has_evidence": True, "decision": "routed", "status": "escalated",
+                  "evaluation_reasoning": "Supporting evidence attached; human evidence review required."},
+         "$push": {"evidence_list": public_metadata(entry)}})
+    current = await db.sop_requests.find_one({"id": request_id})
+    return {"status": "success", "message": "Evidence attached for human review.",
+            "evidence": public_metadata(entry), "new_request_status": current["status"],
+            "new_decision": current["decision"]}
 
 
 @router.get("/file/{evidence_id}")
-async def get_evidence_file(
-    evidence_id: str,
-    db: AsyncIOMotorDatabase = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """Securely stream/view an uploaded evidence file with department-level access control."""
+async def get_evidence_file(evidence_id: str, db=Depends(get_db), current_user: User = Depends(get_current_user)):
     doc = await db.evidence.find_one({"id": evidence_id})
     if not doc:
-        raise HTTPException(status_code=404, detail="Evidence file not found")
-
-    # Fetch associated request to verify department authorization
-    sop_req = await db.sop_requests.find_one({"id": doc.get("request_id")})
-    if not sop_req:
-        raise HTTPException(status_code=404, detail="Associated request not found")
-
-    user_role = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
-
-    # Authorization rules:
-    # 1. Employee: Can only view evidence for their own request
-    if user_role == "employee":
-        if sop_req.get("employee_id") != current_user.id and doc.get("uploaded_by") != current_user.id:
-            raise HTTPException(status_code=403, detail="Access denied: You can only view evidence for your own requests")
-
-    # 2. Manager: Can view evidence for requests within their own department or their own requests
-    elif user_role == "manager":
-        is_owner = sop_req.get("employee_id") == current_user.id or doc.get("uploaded_by") == current_user.id
-        req_dept = sop_req.get("department")
-        same_dept = req_dept and current_user.department and req_dept == current_user.department
-        if not (is_owner or same_dept):
-            raise HTTPException(
-                status_code=403,
-                detail=f"Access denied: Managers cannot access evidence from department '{req_dept}'",
-            )
-
-    # 3. Executive and Admin: Authorized for organization-wide review
-
-    file_path = Path(doc.get("storage_path", ""))
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail="File content not found on server")
-
-    return FileResponse(
-        path=file_path,
-        media_type=doc.get("content_type", "application/octet-stream"),
-        filename=doc.get("original_filename", "evidence"),
-    )
+        raise HTTPException(404, "Evidence not found")
+    owner = await db.sop_requests.find_one({"id": doc["request_id"]}) if doc.get("request_id") else await db.request_drafts.find_one({"id": doc.get("draft_id")})
+    if not owner:
+        raise HTTPException(404, "Associated request not found")
+    await authorize_evidence(db, owner["employee_id"], current_user)
+    path = Path(doc["storage_path"]).resolve()
+    if not path.is_relative_to(UPLOAD_DIR.resolve()) or not path.is_file():
+        raise HTTPException(404, "File content not found")
+    return FileResponse(path, media_type=doc["content_type"], filename=doc["original_filename"],
+                        headers={"X-Content-Type-Options": "nosniff"})
 
 
 @router.get("/request/{request_id}")
-async def list_request_evidence(
-    request_id: str,
-    db: AsyncIOMotorDatabase = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """List all evidence attached to a request with department access control."""
-    sop_req = await db.sop_requests.find_one({"id": request_id})
-    if not sop_req:
-        raise HTTPException(status_code=404, detail="Request not found")
-
-    user_role = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
-
-    if user_role == "employee":
-        if sop_req.get("employee_id") != current_user.id:
-            raise HTTPException(status_code=403, detail="Access denied: You can only view evidence for your own requests")
-    elif user_role == "manager":
-        is_owner = sop_req.get("employee_id") == current_user.id
-        req_dept = sop_req.get("department")
-        same_dept = req_dept and current_user.department and req_dept == current_user.department
-        if not (is_owner or same_dept):
-            raise HTTPException(
-                status_code=403,
-                detail=f"Access denied: Managers cannot list evidence from department '{req_dept}'",
-            )
-
-    cursor = db.evidence.find({"request_id": request_id})
-    docs = await cursor.to_list(length=100)
-    return docs
+async def list_request_evidence(request_id: str, db=Depends(get_db), current_user: User = Depends(get_current_user)):
+    request = await db.sop_requests.find_one({"id": request_id})
+    if not request:
+        raise HTTPException(404, "Request not found")
+    await authorize_evidence(db, request["employee_id"], current_user)
+    docs = await db.evidence.find({"request_id": request_id}).to_list(length=100)
+    return [public_metadata(doc) for doc in docs]

@@ -39,6 +39,7 @@ async def retrieve_policy(state: RequestState) -> dict:
     query = " ".join(query_parts)
     logger.info(f"Retrieve Policy: Searching for: {query[:100]}...")
 
+    policy_unavailable = False
     # Perform vector search
     try:
         from app.services.sop_service import search_policy
@@ -65,16 +66,19 @@ async def retrieve_policy(state: RequestState) -> dict:
             )
             logger.info(f"Retrieve Policy: Found {len(results)} relevant policy chunks")
         else:
+            policy_unavailable = True
             policy_refs = ["No specific policy found"]
             policy_text = "No specific SOP policy found for this request type. Exercise caution and recommend escalation."
             logger.warning("Retrieve Policy: No policy chunks found")
 
     except Exception as e:
         logger.error(f"Retrieve Policy: Vector search failed: {e}")
-        policy_refs = [f"Policy retrieval error: {e}"]
-        policy_text = f"Error retrieving policy: {e}. Recommend manual escalation."
+        policy_unavailable = True
+        policy_refs = []
+        policy_text = "Policy retrieval unavailable; human review required."
 
     return {
+        "policy_unavailable": policy_unavailable,
         "retrieved_policy_refs": policy_refs,
         "retrieved_policy_text": policy_text,
     }

@@ -1,0 +1,254 @@
+Executing <Task finished name='Task-1' coro=<RuntimeCase.asyncSetUp() done, defined at D:\Bootcamp Projects\SOP FORGE\backend\tests\test_conversation_engine.py:35> result=None created at C:\Users\Aariz\AppData\Roaming\uv\python\cpython-3.11-windows-x86_64-none\Lib\asyncio\runners.py:100> took 0.579 seconds
+Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+Executing <Task pending name='Task-47' coro=<RuntimeCase.test_10_continue_without_routes() running at D:\Bootcamp Projects\SOP FORGE\backend\tests\test_conversation_engine.py:123> wait_for=<Task pending name='Task-48' coro=<RunnableCallable.ainvoke() running at C:\Users\Aariz\AppData\Local\hermes\hermes-agent\venv\Lib\site-packages\langgraph\_internal\_runnable.py:452> cb=[Task.task_wakeup()] created at C:\Users\Aariz\AppData\Roaming\uv\python\cpython-3.11-windows-x86_64-none\Lib\asyncio\tasks.py:386> cb=[_run_until_complete_cb() at C:\Users\Aariz\AppData\Roaming\uv\python\cpython-3.11-windows-x86_64-none\Lib\asyncio\base_events.py:181] created at C:\Users\Aariz\AppData\Roaming\uv\python\cpython-3.11-windows-x86_64-none\Lib\asyncio\runners.py:100> took 2.265 seconds
+Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+Executing <Task finished name='Task-193' coro=<RuntimeCase.test_24_embedding_failure_degraded() done, defined at D:\Bootcamp Projects\SOP FORGE\backend\tests\test_conversation_engine.py:213> result=None created at C:\Users\Aariz\AppData\Roaming\uv\python\cpython-3.11-windows-x86_64-none\Lib\asyncio\runners.py:100> took 0.250 seconds
+Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+Request state cache unavailable; MongoDB remains authoritative
+Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+Candidate extraction unavailable or invalid; draft preserved
+Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+Intake: HRMS fetch partially failed: offline
+Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+Intake: HRMS fetch partially failed: offline
+Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+2026-09-06 18:01:48 | asyncio                        | WARNING  | Executing <Task pending name='Task-327' coro=<RuntimeCase.test_http_chat_and_form_contract() running at D:\Bootcamp Projects\SOP FORGE\backend\tests\test_conversation_engine.py:312> cb=[_run_until_complete_cb() at C:\Users\Aariz\AppData\Roaming\uv\python\cpython-3.11-windows-x86_64-none\Lib\asyncio\base_events.py:181] created at C:\Users\Aariz\AppData\Roaming\uv\python\cpython-3.11-windows-x86_64-none\Lib\asyncio\runners.py:100> took 0.266 seconds
+2026-09-06 18:01:48 | httpx                          | INFO     | HTTP Request: POST http://test/api/request/assistant "HTTP/1.1 200 OK"
+2026-09-06 18:01:48 | httpx                          | INFO     | HTTP Request: POST http://test/api/request/submit "HTTP/1.1 422 Unprocessable Entity"
+2026-09-06 18:01:48 | app.services.request_service   | INFO     | Request 22df212c-13d3-40e5-9014-4f90bdd4c03e submitted by EMP001
+2026-09-06 18:01:48 | orchestration.graph            | INFO     | Running SOP workflow for request 22df212c-13d3-40e5-9014-4f90bdd4c03e (leave)
+2026-09-06 18:01:48 | orchestration.nodes.intake     | INFO     | Intake: Processing leave request for EMP001
+2026-09-06 18:01:48 | orchestration.nodes.retrieve_policy | INFO     | Retrieve Policy: Searching for: Policy for leave request. Leave type: annual. Reason: vacation. Leave balance, notice period, blacko...
+2026-09-06 18:01:48 | app.services.sop_service       | WARNING  | Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+2026-09-06 18:01:48 | app.services.sop_service       | WARNING  | retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+2026-09-06 18:01:48 | orchestration.nodes.retrieve_policy | INFO     | Retrieve Policy: Found 1 relevant policy chunks
+2026-09-06 18:01:48 | orchestration.nodes.dmn_rule_engine | INFO     | DMN Engine: Starting deterministic rule evaluation
+2026-09-06 18:01:48 | orchestration.edges            | INFO     | Edge: DMN Passed and Confidence 1.00 >= 0.85 � auto-deciding
+2026-09-06 18:01:48 | orchestration.nodes.auto_decide | INFO     | Auto-Decide: Request 22df212c-13d3-40e5-9014-4f90bdd4c03e auto-approved with confidence 1.00
+2026-09-06 18:01:48 | orchestration.nodes.audit_log  | INFO     | Audit Log: Recording decision for request 22df212c-13d3-40e5-9014-4f90bdd4c03e. Status: resolved, Decision: approved, Confidence: 1.00
+2026-09-06 18:01:48 | orchestration.nodes.audit_log  | INFO     | Audit Log: Entry recorded for request 22df212c-13d3-40e5-9014-4f90bdd4c03e
+2026-09-06 18:01:48 | orchestration.graph            | INFO     | Workflow completed for 22df212c-13d3-40e5-9014-4f90bdd4c03e: decision=approved, status=resolved, confidence=1.00
+2026-09-06 18:01:48 | app.api.request                | INFO     | Request 22df212c-13d3-40e5-9014-4f90bdd4c03e updated with AI result: approved
+2026-09-06 18:01:48 | httpx                          | INFO     | HTTP Request: POST http://test/api/request/submit "HTTP/1.1 201 Created"
+2026-09-06 18:01:48 | orchestration.nodes.intake     | INFO     | Intake: Processing leave request for EMP001
+2026-09-06 18:01:48 | orchestration.nodes.retrieve_policy | INFO     | Retrieve Policy: Searching for: Policy for leave request. Leave type: sick. Reason: fever. Leave balance, notice period, blackout da...
+2026-09-06 18:01:48 | app.services.sop_service       | WARNING  | Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+2026-09-06 18:01:48 | app.services.sop_service       | WARNING  | retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+2026-09-06 18:01:48 | orchestration.nodes.retrieve_policy | INFO     | Retrieve Policy: Found 1 relevant policy chunks
+2026-09-06 18:01:48 | orchestration.nodes.dmn_rule_engine | INFO     | DMN Engine: Starting deterministic rule evaluation
+2026-09-06 18:01:48 | orchestration.nodes.intake     | INFO     | Intake: Processing leave request for EMP001
+2026-09-06 18:01:48 | orchestration.nodes.retrieve_policy | INFO     | Retrieve Policy: Searching for: Policy for leave request. Leave type: sick. Reason: fever. Leave balance, notice period, blackout da...
+2026-09-06 18:01:48 | app.services.sop_service       | WARNING  | Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+2026-09-06 18:01:48 | app.services.sop_service       | WARNING  | retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+2026-09-06 18:01:48 | orchestration.nodes.retrieve_policy | INFO     | Retrieve Policy: Found 1 relevant policy chunks
+2026-09-06 18:01:48 | orchestration.nodes.dmn_rule_engine | INFO     | DMN Engine: Starting deterministic rule evaluation
+2026-09-06 18:01:49 | app.services.sop_service       | WARNING  | retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+2026-09-06 18:01:49 | orchestration.nodes.intake     | INFO     | Intake: Processing leave request for EMP001
+2026-09-06 18:01:49 | orchestration.nodes.retrieve_policy | INFO     | Retrieve Policy: Searching for: Policy for leave request. Leave type: sick. Reason: fever. Leave balance, notice period, blackout da...
+2026-09-06 18:01:49 | app.services.sop_service       | WARNING  | Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+2026-09-06 18:01:49 | app.services.sop_service       | WARNING  | retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+2026-09-06 18:01:49 | orchestration.nodes.retrieve_policy | INFO     | Retrieve Policy: Found 1 relevant policy chunks
+2026-09-06 18:01:49 | orchestration.nodes.dmn_rule_engine | INFO     | DMN Engine: Starting deterministic rule evaluation
+2026-09-06 18:01:49 | orchestration.nodes.intake     | INFO     | Intake: Processing leave request for EMP001
+2026-09-06 18:01:49 | orchestration.nodes.retrieve_policy | INFO     | Retrieve Policy: Searching for: Policy for leave request. Leave type: sick. Reason: fever. Leave balance, notice period, blackout da...
+2026-09-06 18:01:49 | app.services.sop_service       | WARNING  | Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+2026-09-06 18:01:49 | app.services.sop_service       | WARNING  | retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+2026-09-06 18:01:49 | orchestration.nodes.retrieve_policy | INFO     | Retrieve Policy: Found 1 relevant policy chunks
+2026-09-06 18:01:49 | orchestration.nodes.dmn_rule_engine | INFO     | DMN Engine: Starting deterministic rule evaluation
+2026-09-06 18:01:49 | orchestration.nodes.intake     | INFO     | Intake: Processing leave request for EMP001
+2026-09-06 18:01:49 | asyncio                        | WARNING  | Executing <Task pending name='Task-371' coro=<RuntimeCase.test_llm_cannot_turn_ambiguous_reply_into_evidence_consent() running at D:\Bootcamp Projects\SOP FORGE\backend\tests\test_conversation_engine.py:257> cb=[_run_until_complete_cb() at C:\Users\Aariz\AppData\Roaming\uv\python\cpython-3.11-windows-x86_64-none\Lib\asyncio\base_events.py:181] created at C:\Users\Aariz\AppData\Roaming\uv\python\cpython-3.11-windows-x86_64-none\Lib\asyncio\runners.py:100> took 0.110 seconds
+2026-09-06 18:01:49 | orchestration.nodes.retrieve_policy | INFO     | Retrieve Policy: Searching for: Policy for leave request. Leave type: sick. Reason: fever. Leave balance, notice period, blackout da...
+2026-09-06 18:01:49 | app.services.sop_service       | WARNING  | Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+2026-09-06 18:01:49 | app.services.sop_service       | WARNING  | retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+2026-09-06 18:01:49 | orchestration.nodes.retrieve_policy | INFO     | Retrieve Policy: Found 1 relevant policy chunks
+2026-09-06 18:01:49 | orchestration.nodes.dmn_rule_engine | INFO     | DMN Engine: Starting deterministic rule evaluation
+2026-09-06 18:01:49 | orchestration.nodes.intake     | INFO     | Intake: Processing leave request for EMP001
+2026-09-06 18:01:49 | orchestration.nodes.retrieve_policy | INFO     | Retrieve Policy: Searching for: Policy for leave request. Leave type: sick. Reason: fever. Leave balance, notice period, blackout da...
+2026-09-06 18:01:49 | app.services.sop_service       | WARNING  | Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+2026-09-06 18:01:49 | app.services.sop_service       | WARNING  | retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+2026-09-06 18:01:49 | orchestration.nodes.retrieve_policy | INFO     | Retrieve Policy: Found 1 relevant policy chunks
+2026-09-06 18:01:49 | orchestration.nodes.dmn_rule_engine | INFO     | DMN Engine: Starting deterministic rule evaluation
+2026-09-06 18:01:49 | orchestration.nodes.intake     | INFO     | Intake: Processing leave request for EMP001
+2026-09-06 18:01:49 | orchestration.nodes.retrieve_policy | INFO     | Retrieve Policy: Searching for: Policy for leave request. Leave type: sick. Reason: fever. Leave balance, notice period, blackout da...
+2026-09-06 18:01:49 | app.services.sop_service       | WARNING  | Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+2026-09-06 18:01:49 | app.services.sop_service       | WARNING  | retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+2026-09-06 18:01:49 | orchestration.nodes.retrieve_policy | INFO     | Retrieve Policy: Found 1 relevant policy chunks
+2026-09-06 18:01:49 | orchestration.nodes.dmn_rule_engine | INFO     | DMN Engine: Starting deterministic rule evaluation
+2026-09-06 18:01:49 | orchestration.nodes.intake     | INFO     | Intake: Processing leave request for EMP001
+2026-09-06 18:01:49 | orchestration.nodes.retrieve_policy | INFO     | Retrieve Policy: Searching for: Policy for leave request. Leave type: sick. Reason: fever. Leave balance, notice period, blackout da...
+2026-09-06 18:01:49 | app.services.sop_service       | WARNING  | Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+2026-09-06 18:01:49 | app.services.sop_service       | WARNING  | retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+2026-09-06 18:01:49 | orchestration.nodes.retrieve_policy | INFO     | Retrieve Policy: Found 1 relevant policy chunks
+2026-09-06 18:01:49 | orchestration.nodes.dmn_rule_engine | INFO     | DMN Engine: Starting deterministic rule evaluation
+2026-09-06 18:01:49 | orchestration.nodes.intake     | INFO     | Intake: Processing leave request for EMP001
+2026-09-06 18:01:49 | orchestration.nodes.retrieve_policy | INFO     | Retrieve Policy: Searching for: Policy for leave request. Leave type: sick. Reason: fever. Leave balance, notice period, blackout da...
+2026-09-06 18:01:49 | app.services.sop_service       | WARNING  | Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+2026-09-06 18:01:49 | app.services.sop_service       | WARNING  | retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+2026-09-06 18:01:49 | orchestration.nodes.retrieve_policy | INFO     | Retrieve Policy: Found 1 relevant policy chunks
+2026-09-06 18:01:49 | orchestration.nodes.dmn_rule_engine | INFO     | DMN Engine: Starting deterministic rule evaluation
+2026-09-06 18:01:49 | app.services.request_service   | INFO     | Request 06649305-f229-4fbf-a48a-bf45882f0e3a submitted by EMP001
+2026-09-06 18:01:49 | orchestration.graph            | INFO     | Running SOP workflow for request 06649305-f229-4fbf-a48a-bf45882f0e3a (leave)
+2026-09-06 18:01:49 | orchestration.nodes.intake     | INFO     | Intake: Processing leave request for EMP001
+2026-09-06 18:01:49 | orchestration.nodes.retrieve_policy | INFO     | Retrieve Policy: Searching for: Policy for leave request. Leave type: sick. Reason: fever. Leave balance, notice period, blackout da...
+2026-09-06 18:01:49 | app.services.sop_service       | WARNING  | Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+2026-09-06 18:01:49 | app.services.sop_service       | WARNING  | retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+2026-09-06 18:01:49 | orchestration.nodes.retrieve_policy | INFO     | Retrieve Policy: Found 1 relevant policy chunks
+2026-09-06 18:01:49 | orchestration.nodes.dmn_rule_engine | INFO     | DMN Engine: Starting deterministic rule evaluation
+2026-09-06 18:01:49 | orchestration.edges            | INFO     | Edge: DMN failure or explicit decision (decision='routed', dmn=False) � routing to escalation handler
+2026-09-06 18:01:49 | orchestration.nodes.escalate   | INFO     | Escalate: Request 06649305-f229-4fbf-a48a-bf45882f0e3a escalated (AI decision: routed, confidence: 1.00). SLA deadline: 2026-09-06T15:01:49.471514+00:00
+2026-09-06 18:01:49 | orchestration.nodes.override_check | INFO     | Override Check: No overrides for request 06649305-f229-4fbf-a48a-bf45882f0e3a
+2026-09-06 18:01:49 | orchestration.nodes.audit_log  | INFO     | Audit Log: Recording decision for request 06649305-f229-4fbf-a48a-bf45882f0e3a. Status: escalated, Decision: routed, Confidence: 1.00
+2026-09-06 18:01:49 | orchestration.nodes.audit_log  | INFO     | Audit Log: Entry recorded for request 06649305-f229-4fbf-a48a-bf45882f0e3a
+2026-09-06 18:01:49 | orchestration.graph            | INFO     | Workflow completed for 06649305-f229-4fbf-a48a-bf45882f0e3a: decision=routed, status=escalated, confidence=1.00
+2026-09-06 18:01:49 | app.api.request                | INFO     | Request 06649305-f229-4fbf-a48a-bf45882f0e3a updated with AI result: routed
+2026-09-06 18:01:49 | app.services.request_service   | INFO     | Request 06649305-f229-4fbf-a48a-bf45882f0e3a routed by EMP001
+2026-09-06 18:01:49 | app.services.request_service   | INFO     | Request 06649305-f229-4fbf-a48a-bf45882f0e3a approved by EMP001
+2026-09-06 18:01:49 | app.services.request_service   | INFO     | Request 06649305-f229-4fbf-a48a-bf45882f0e3a overridden by EMP001: approved \u2192 rejected
+2026-09-06 18:01:49 | orchestration.nodes.intake     | INFO     | Intake: Processing leave request for EMP001
+2026-09-06 18:01:49 | orchestration.nodes.retrieve_policy | INFO     | Retrieve Policy: Searching for: Policy for leave request. Leave type: sick. Reason: fever. Leave balance, notice period, blackout da...
+2026-09-06 18:01:49 | app.services.sop_service       | WARNING  | Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+2026-09-06 18:01:49 | app.services.sop_service       | WARNING  | retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+2026-09-06 18:01:49 | orchestration.nodes.retrieve_policy | INFO     | Retrieve Policy: Found 1 relevant policy chunks
+2026-09-06 18:01:49 | orchestration.nodes.dmn_rule_engine | INFO     | DMN Engine: Starting deterministic rule evaluation
+2026-09-06 18:01:49 | orchestration.nodes.intake     | INFO     | Intake: Processing leave request for EMP001
+2026-09-06 18:01:49 | orchestration.nodes.retrieve_policy | INFO     | Retrieve Policy: Searching for: Policy for leave request. Leave type: sick. Reason: fever. Leave balance, notice period, blackout da...
+2026-09-06 18:01:49 | app.services.sop_service       | WARNING  | Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+2026-09-06 18:01:49 | app.services.sop_service       | WARNING  | retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+2026-09-06 18:01:49 | orchestration.nodes.retrieve_policy | INFO     | Retrieve Policy: Found 1 relevant policy chunks
+2026-09-06 18:01:49 | orchestration.nodes.dmn_rule_engine | INFO     | DMN Engine: Starting deterministic rule evaluation
+2026-09-06 18:01:49 | orchestration.nodes.intake     | INFO     | Intake: Processing leave request for EMP001
+2026-09-06 18:01:49 | orchestration.nodes.retrieve_policy | INFO     | Retrieve Policy: Searching for: Policy for leave request. Leave type: sick. Reason: fever. Leave balance, notice period, blackout da...
+2026-09-06 18:01:49 | app.services.sop_service       | WARNING  | Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+2026-09-06 18:01:49 | app.services.sop_service       | WARNING  | retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+2026-09-06 18:01:49 | orchestration.nodes.retrieve_policy | INFO     | Retrieve Policy: Found 1 relevant policy chunks
+2026-09-06 18:01:49 | orchestration.nodes.dmn_rule_engine | INFO     | DMN Engine: Starting deterministic rule evaluation
+2026-09-06 18:01:49 | orchestration.nodes.intake     | INFO     | Intake: Processing leave request for EMP001
+2026-09-06 18:01:50 | orchestration.nodes.retrieve_policy | INFO     | Retrieve Policy: Searching for: Policy for leave request. Leave type: sick. Reason: fever. Leave balance, notice period, blackout da...
+2026-09-06 18:01:50 | app.services.sop_service       | WARNING  | Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+2026-09-06 18:01:50 | app.services.sop_service       | WARNING  | retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+2026-09-06 18:01:50 | orchestration.nodes.retrieve_policy | INFO     | Retrieve Policy: Found 1 relevant policy chunks
+2026-09-06 18:01:50 | orchestration.nodes.dmn_rule_engine | INFO     | DMN Engine: Starting deterministic rule evaluation
+2026-09-06 18:01:50 | orchestration.nodes.intake     | INFO     | Intake: Processing leave request for EMP001
+2026-09-06 18:01:50 | orchestration.nodes.retrieve_policy | INFO     | Retrieve Policy: Searching for: Policy for leave request. Leave type: sick. Reason: fever. Leave balance, notice period, blackout da...
+2026-09-06 18:01:50 | app.services.sop_service       | WARNING  | Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+2026-09-06 18:01:50 | app.services.sop_service       | WARNING  | retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+2026-09-06 18:01:50 | orchestration.nodes.retrieve_policy | INFO     | Retrieve Policy: Found 1 relevant policy chunks
+2026-09-06 18:01:50 | orchestration.nodes.dmn_rule_engine | INFO     | DMN Engine: Starting deterministic rule evaluation
+2026-09-06 18:01:50 | app.services.request_service   | INFO     | Request 7754fbe8-fb75-4829-9e84-0665567c8921 submitted by EMP001
+2026-09-06 18:01:50 | orchestration.graph            | INFO     | Running SOP workflow for request 7754fbe8-fb75-4829-9e84-0665567c8921 (leave)
+2026-09-06 18:01:50 | orchestration.nodes.intake     | INFO     | Intake: Processing leave request for EMP001
+2026-09-06 18:01:50 | orchestration.nodes.retrieve_policy | INFO     | Retrieve Policy: Searching for: Policy for leave request. Leave type: sick. Reason: fever. Leave balance, notice period, blackout da...
+2026-09-06 18:01:50 | app.services.sop_service       | WARNING  | Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+2026-09-06 18:01:50 | app.services.sop_service       | WARNING  | retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+2026-09-06 18:01:50 | orchestration.nodes.retrieve_policy | INFO     | Retrieve Policy: Found 1 relevant policy chunks
+2026-09-06 18:01:50 | orchestration.nodes.dmn_rule_engine | INFO     | DMN Engine: Starting deterministic rule evaluation
+2026-09-06 18:01:50 | orchestration.edges            | INFO     | Edge: DMN failure or explicit decision (decision='routed', dmn=False) � routing to escalation handler
+2026-09-06 18:01:50 | orchestration.nodes.escalate   | INFO     | Escalate: Request 7754fbe8-fb75-4829-9e84-0665567c8921 escalated (AI decision: routed, confidence: 1.00). SLA deadline: 2026-09-06T15:01:50.238126+00:00
+2026-09-06 18:01:50 | orchestration.nodes.override_check | INFO     | Override Check: No overrides for request 7754fbe8-fb75-4829-9e84-0665567c8921
+2026-09-06 18:01:50 | orchestration.nodes.audit_log  | INFO     | Audit Log: Recording decision for request 7754fbe8-fb75-4829-9e84-0665567c8921. Status: escalated, Decision: routed, Confidence: 1.00
+2026-09-06 18:01:50 | orchestration.nodes.audit_log  | INFO     | Audit Log: Entry recorded for request 7754fbe8-fb75-4829-9e84-0665567c8921
+2026-09-06 18:01:50 | orchestration.graph            | INFO     | Workflow completed for 7754fbe8-fb75-4829-9e84-0665567c8921: decision=routed, status=escalated, confidence=1.00
+2026-09-06 18:01:50 | app.api.request                | INFO     | Request 7754fbe8-fb75-4829-9e84-0665567c8921 updated with AI result: routed
+2026-09-06 18:01:50 | orchestration.nodes.intake     | INFO     | Intake: Processing leave request for EMP001
+2026-09-06 18:01:50 | orchestration.nodes.retrieve_policy | INFO     | Retrieve Policy: Searching for: Policy for leave request. Leave type: annual. Reason: vacation. Leave balance, notice period, blacko...
+2026-09-06 18:01:50 | orchestration.nodes.retrieve_policy | ERROR    | Retrieve Policy: Vector search failed: offline
+2026-09-06 18:01:50 | orchestration.nodes.dmn_rule_engine | INFO     | DMN Engine: Starting deterministic rule evaluation
+2026-09-06 18:01:50 | app.services.request_service   | INFO     | Request 0196993a-a64b-4d44-a1f7-48884e648514 submitted by EMP001
+2026-09-06 18:01:50 | orchestration.graph            | INFO     | Running SOP workflow for request 0196993a-a64b-4d44-a1f7-48884e648514 (leave)
+2026-09-06 18:01:50 | orchestration.nodes.intake     | INFO     | Intake: Processing leave request for EMP001
+2026-09-06 18:01:50 | orchestration.nodes.retrieve_policy | INFO     | Retrieve Policy: Searching for: Policy for leave request. Leave type: annual. Reason: vacation. Leave balance, notice period, blacko...
+2026-09-06 18:01:50 | orchestration.nodes.retrieve_policy | ERROR    | Retrieve Policy: Vector search failed: offline
+2026-09-06 18:01:50 | orchestration.nodes.dmn_rule_engine | INFO     | DMN Engine: Starting deterministic rule evaluation
+2026-09-06 18:01:50 | orchestration.edges            | INFO     | Edge: DMN failure or explicit decision (decision='routed', dmn=False) � routing to escalation handler
+2026-09-06 18:01:50 | orchestration.nodes.escalate   | INFO     | Escalate: Request 0196993a-a64b-4d44-a1f7-48884e648514 escalated (AI decision: routed, confidence: 1.00). SLA deadline: 2026-09-06T15:01:50.553136+00:00
+2026-09-06 18:01:50 | orchestration.nodes.override_check | INFO     | Override Check: No overrides for request 0196993a-a64b-4d44-a1f7-48884e648514
+2026-09-06 18:01:50 | orchestration.nodes.audit_log  | INFO     | Audit Log: Recording decision for request 0196993a-a64b-4d44-a1f7-48884e648514. Status: escalated, Decision: routed, Confidence: 1.00
+2026-09-06 18:01:50 | orchestration.nodes.audit_log  | INFO     | Audit Log: Entry recorded for request 0196993a-a64b-4d44-a1f7-48884e648514
+2026-09-06 18:01:50 | orchestration.graph            | INFO     | Workflow completed for 0196993a-a64b-4d44-a1f7-48884e648514: decision=routed, status=escalated, confidence=1.00
+2026-09-06 18:01:50 | app.api.request                | INFO     | Request 0196993a-a64b-4d44-a1f7-48884e648514 updated with AI result: routed
+2026-09-06 18:01:50 | orchestration.nodes.intake     | INFO     | Intake: Processing leave request for EMP001
+2026-09-06 18:01:50 | orchestration.nodes.intake     | INFO     | Intake: Processing leave request for EMP001
+2026-09-06 18:01:50 | orchestration.nodes.retrieve_policy | INFO     | Retrieve Policy: Searching for: Policy for leave request. Leave type: annual. Reason: vacation. Leave balance, notice period, blacko...
+2026-09-06 18:01:50 | app.services.sop_service       | WARNING  | Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.
+2026-09-06 18:01:50 | app.services.sop_service       | WARNING  | retrieval_mode=degraded_keyword; untrusted legacy vectors excluded
+2026-09-06 18:01:50 | orchestration.nodes.retrieve_policy | INFO     | Retrieve Policy: Found 1 relevant policy chunks
+2026-09-06 18:01:50 | orchestration.nodes.dmn_rule_engine | INFO     | DMN Engine: Starting deterministic rule evaluation
+2026-09-06 18:01:50 | app.services.request_service   | INFO     | Request 10ee2a4b-8599-40c0-ab30-50288710692c submitted by EMP001
+2026-09-06 18:01:50 | app.api.request                | ERROR    | AI workflow failed for 10ee2a4b-8599-40c0-ab30-50288710692c: PRIVATE trace
+----------------------------------------------------------------------
+Ran 51 tests in 10.024s
+
+OK

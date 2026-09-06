@@ -91,13 +91,13 @@ const MyRequests = (() => {
     }
 
     function getStatusInfo(status, decision) {
-        if (status === 'resolved' && decision === 'approved') {
+        if (['resolved', 'overridden'].includes(status) && decision === 'approved') {
             return { label: 'Approved', badge: 'approved', icon: '✅', bg: 'rgba(16,185,129,0.1)', border: 'rgba(16,185,129,0.2)' };
         }
-        if (status === 'resolved' && decision === 'rejected') {
+        if (['resolved', 'overridden'].includes(status) && decision === 'rejected') {
             return { label: 'Declined', badge: 'rejected', icon: '❌', bg: 'rgba(239,68,68,0.1)', border: 'rgba(239,68,68,0.2)' };
         }
-        if (status === 'escalated' || status === 'routed') {
+        if (status === 'escalated' || decision === 'routed') {
             return { label: 'Under Review', badge: 'escalated', icon: '⏳', bg: 'rgba(245,158,11,0.1)', border: 'rgba(245,158,11,0.2)' };
         }
         if (status === 'in_progress') {

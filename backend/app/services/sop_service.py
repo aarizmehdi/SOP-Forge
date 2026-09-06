@@ -4,7 +4,8 @@ Handles SOP document ingestion, text chunking, embedding generation,
 and pure Python vector similarity search for RAG retrieval.
 """
 
-import hashlib
+import re
+import math
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -94,8 +95,8 @@ def _chunk_flat_paragraphs(content: str, chunk_size: int = 800) -> list[str]:
 
 
 async def generate_embeddings(texts: list[str]) -> list[list[float]]:
-    """Generate embeddings for a list of text chunks using OpenAI API or semantic fallback."""
-    if settings.is_llm_configured and hasattr(settings, "openai_api_key") and settings.openai_api_key:
+    """Generate embeddings for a list of text chunks using OpenAI; empty vectors explicitly signal degraded retrieval."""
+    if settings.openai_api_key:
         try:
             import httpx
             async with httpx.AsyncClient() as client:
@@ -113,22 +114,15 @@ async def generate_embeddings(texts: list[str]) -> list[list[float]]:
                 )
                 response.raise_for_status()
                 data = response.json()
-                return [item["embedding"] for item in data["data"]]
+                vectors = [item["embedding"] for item in sorted(data["data"], key=lambda x: x["index"])]
+                if len(vectors) != len(texts) or any(not vector or not all(math.isfinite(v) for v in vector) for vector in vectors):
+                    raise ValueError("Invalid embedding response")
+                return vectors
         except Exception as e:
-            logger.warning(f"Remote embedding API unavailable: {e}. Using local semantic embedding engine.")
+            logger.warning("Embedding provider unavailable; retrieval_mode=degraded_keyword")
 
-    # Fallback: deterministic normalized semantic vector representation
-    logger.info("Using local semantic vector representation for RAG embedding engine.")
-    embeddings = []
-    for text_item in texts:
-        hash_bytes = hashlib.sha256(text_item.encode("utf-8")).digest()
-        embedding = []
-        for i in range(settings.embedding_dimensions):
-            byte_idx = i % len(hash_bytes)
-            embedding.append((hash_bytes[byte_idx] - 128) / 128.0)
-        embeddings.append(embedding)
-
-    return embeddings
+    logger.warning("Real embeddings unavailable; retrieval_mode=degraded_keyword. No semantic fallback.")
+    return [[] for _ in texts]
 
 
 async def ingest_sop_document(
@@ -169,6 +163,8 @@ async def ingest_sop_document(
                 "category": category,
                 "chunk_index": idx,
                 "total_chunks": len(chunks),
+                "embedding_provider": "openai" if embedding else "none",
+                "embedding_model": settings.embedding_model if embedding else None,
             },
         )
         chunk_docs.append(sop_chunk.model_dump(mode="json"))
@@ -223,6 +219,8 @@ async def update_sop_document(
                     "category": doc.category,
                     "chunk_index": idx,
                     "total_chunks": len(chunks),
+                "embedding_provider": "openai" if embedding else "none",
+                "embedding_model": settings.embedding_model if embedding else None,
                     "version": doc.version,
                 },
             )
@@ -238,7 +236,7 @@ async def update_sop_document(
 
 def compute_cosine_similarity(vec1: list[float], vec2: list[float]) -> float:
     """Compute cosine similarity between two float vectors."""
-    if not vec1 or not vec2:
+    if not vec1 or not vec2 or len(vec1) != len(vec2):
         return 0.0
     dot = sum(a * b for a, b in zip(vec1, vec2))
     norm1 = sum(a * a for a in vec1) ** 0.5
@@ -275,22 +273,29 @@ async def search_policy(
     chunks = await db.sop_chunks.find({"document_id": {"$in": active_doc_ids}}).to_list(length=10000)
 
     scored = []
-    query_words = {w.lower() for w in query.split() if len(w) > 2}
+    stop = {"the", "and", "for", "what", "does", "with", "this", "that", "policy", "policies", "request", "need", "can", "how", "are", "our", "company", "about", "have", "take"}
+    def words(text):
+        return {word for word in re.findall(r"[a-z0-9]+", text.lower()) if len(word) > 2 and word not in stop}
+    query_words = words(query)
     
     for chunk in chunks:
         emb = chunk.get("embedding", [])
-        base_score = compute_cosine_similarity(query_embedding, emb) if isinstance(emb, list) else 0.0
+        metadata = chunk.get("metadata", {})
+        semantic = bool(query_embedding and isinstance(emb, list) and len(emb) == len(query_embedding)
+                        and metadata.get("embedding_provider") == "openai"
+                        and metadata.get("embedding_model") == settings.embedding_model)
+        base_score = compute_cosine_similarity(query_embedding, emb) if semantic else 0.0
         
         chunk_text_str = chunk.get("chunk_text", "")
-        chunk_words = {w.lower() for w in chunk_text_str.split() if len(w) > 2}
+        chunk_words = words(chunk_text_str)
         
         if query_words and chunk_words:
             overlap = len(query_words.intersection(chunk_words))
-            keyword_boost = (overlap / max(len(query_words), 1)) * 0.6
+            keyword_boost = overlap / max(len(query_words), 1)
         else:
             keyword_boost = 0.0
         
-        final_score = round(min(base_score + keyword_boost, 1.0), 3)
+        final_score = round(max(base_score, keyword_boost), 3)
 
         doc_title = chunk.get("metadata", {}).get("document_title", "Unknown")
         doc_category = chunk.get("metadata", {}).get("category", "")
@@ -304,9 +309,12 @@ async def search_policy(
             "document_title": doc_title,
             "category": doc_category,
             "similarity_score": final_score,
+            "retrieval_mode": "semantic" if semantic else "degraded_keyword",
             "ref": f"{doc_title}: chunk {chunk_idx}",
         })
 
+    if any(item["retrieval_mode"] == "degraded_keyword" for item in scored):
+        logger.warning("retrieval_mode=degraded_keyword; untrusted legacy vectors excluded")
     scored.sort(key=lambda x: x["similarity_score"], reverse=True)
     
     # P0-5: Filter out meaningless chunks below minimum relevance threshold

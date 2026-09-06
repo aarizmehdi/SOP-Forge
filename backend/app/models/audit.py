@@ -11,6 +11,10 @@ from pydantic import BaseModel, Field
 class AuditEventType(str, enum.Enum):
     """Types of auditable events in the SOP engine."""
     REQUEST_SUBMITTED = "request_submitted"
+    DRAFT_CREATED = "draft_created"
+    EVIDENCE_ATTACHED = "evidence_attached"
+    EVIDENCE_OMITTED = "evidence_omitted"
+    WORKFLOW_FAILED = "workflow_failed"
     POLICY_RETRIEVED = "policy_retrieved"
     VARIABLES_EXTRACTED = "variables_extracted"
     DMN_EVALUATED = "dmn_evaluated"

@@ -157,9 +157,9 @@ const ReviewPanel = (() => {
                         <div style="font-size:11px;font-weight:700;color:var(--primary-400);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">📎 Supporting Evidence</div>
                         <div style="display:flex;flex-wrap:wrap;gap:10px">
                             ${req.evidence_list.map(ev => `
-                                <a href="/api/evidence/file/${ev.id}" target="_blank" class="btn btn-ghost btn-sm" style="background:var(--bg-tertiary);border:1px solid var(--border-subtle);font-size:var(--text-xs);display:inline-flex;align-items:center;gap:6px;color:var(--primary-400)">
-                                    📄 ${ev.original_filename} (${Math.round(ev.size / 1024)} KB)
-                                </a>
+                                <button onclick="ReviewPanel.openEvidence('${ev.id}')" class="btn btn-ghost btn-sm" style="background:var(--bg-tertiary);border:1px solid var(--border-subtle);font-size:var(--text-xs);display:inline-flex;align-items:center;gap:6px;color:var(--primary-400)">
+                                    📄 ${escapeEvidenceName(ev.original_filename || ev.filename || 'Evidence')} (${Math.round((ev.size_bytes || ev.size || 0) / 1024)} KB)
+                                </button>
                             `).join('')}
                         </div>
                     </div>
@@ -366,5 +366,32 @@ const ReviewPanel = (() => {
         });
     }
 
-    return { render, switchTab, showDecisionModal, showOverrideModal };
+    function escapeEvidenceName(value) {
+        return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    async function openEvidence(id) {
+        const viewer = window.open('', '_blank');
+        if (viewer) viewer.opener = null;
+        try {
+            const response = await fetch(`/api/evidence/file/${encodeURIComponent(id)}`, {
+                headers: { Authorization: `Bearer ${Auth.getToken()}` }
+            });
+            if (!response.ok) throw new Error('Evidence is unavailable or access was denied.');
+            const url = URL.createObjectURL(await response.blob());
+            if (viewer) viewer.location.href = url;
+            else {
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = 'evidence';
+                link.click();
+            }
+            setTimeout(() => URL.revokeObjectURL(url), 60000);
+        } catch (error) {
+            if (viewer) viewer.close();
+            App.toast(error.message, 'error');
+        }
+    }
+
+    return { render, switchTab, showDecisionModal, showOverrideModal, openEvidence };
 })();
