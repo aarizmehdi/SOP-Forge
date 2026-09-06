@@ -106,8 +106,9 @@ def _evaluate_leave_dmn(submitted_data: dict, extracted: dict, live_data: dict, 
             "evaluation_reasoning": f"DMN Failure: Invalid date range (end_date '{end_str}' is before start_date '{start_str}'). Escalated for human review."
         }
 
-    # Deterministic duration calculation (inclusive)
-    days_req = (end_dt - start_dt).days + 1
+    # Deterministic policy duration calculation (inclusive Monday-Friday working days).
+    from app.services.normalization import working_days_inclusive
+    days_req = working_days_inclusive(start_dt, end_dt)
     if submitted_data.get("half_day"):
         if start_dt != end_dt:
             return {"dmn_result": False, "decision": "routed", "status": "escalated",

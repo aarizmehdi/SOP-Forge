@@ -20,8 +20,16 @@ from app.models.incident import HRIncident
 from app.schemas.request import AssistantChatResponse, TerminalResult
 from app.services.audit_service import create_audit_entry
 from app.services.candidate_extraction import Candidates, development_candidates, extract_candidates
-from app.services.normalization import FIELDS, REQUIRED, normalize_leave_dates, normalize_submission, today_local
-from app.services.response_composition import compose_response
+from app.services.normalization import (
+    FIELDS, REQUIRED, normalize_leave_dates, normalize_submission, resolve_date,
+    today_local,
+)
+from app.services.response_composition import (
+    EvidenceResponseContext,
+    ResponsePlan,
+    TerminalResponseContext,
+    compose_response,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +83,7 @@ async def start_conversation(db, employee, domain):
         domain=domain,
         request_type=DOMAIN_REQUEST_TYPE[domain],
     )
-    welcome = await compose_response(draft, "welcome")
+    welcome = await compose_response(draft, ResponsePlan(purpose="welcome"))
     append_turns(draft, None, welcome)
     await db.request_drafts.insert_one({"_id": draft.id, **draft.model_dump(mode="json")})
     await create_audit_entry(
@@ -208,9 +216,17 @@ def merge_candidates(draft, candidate, message=""):
         if "end_date" in values and "duration_days" in values:
             draft.date_basis = "range"
     draft.fields.update(values)
-    draft.ambiguous_fields = list(dict.fromkeys(
-        [name for name in candidate.ambiguities if name in FIELDS[expected]] + rejected_shapes
-    ))
+    explicit_ambiguities = [
+        name for name in candidate.ambiguities
+        if name in FIELDS[expected]
+        and (
+            name in values
+            or (name in {"start_date", "end_date"} and bool(re.search(
+                r"(?<!\d)\d{1,2}/\d{1,2}(?:/\d{2,4})?(?!\d)", message,
+            )))
+        )
+    ]
+    draft.ambiguous_fields = list(dict.fromkeys(explicit_ambiguities + rejected_shapes))
 
 
 def plan(draft):
@@ -223,6 +239,17 @@ def plan(draft):
             return "AMBIGUOUS_DATE", None
         return "ASK", draft.ambiguous_fields[0]
     if kind == "leave":
+        raw_start = draft.fields.get("start_date")
+        if raw_start:
+            try:
+                if resolve_date(raw_start) < today_local():
+                    draft.fields.pop("start_date", None)
+                    draft.fields.pop("end_date", None)
+                    draft.ambiguous_fields = []
+                    draft.missing_fields = ["start_date"]
+                    return "PAST_DATE", None
+            except (ValueError, TypeError, OverflowError):
+                pass
         try:
             draft.fields = normalize_leave_dates(draft.fields)
         except (ValueError, TypeError, OverflowError) as exc:
@@ -280,7 +307,10 @@ def question_context(draft, field):
         "justification": ("What work do you need this access for?", "Yeh access kis kaam ke liye chahiye?"),
     }
     question, urdu = questions.get(field, ("What detail can you provide next?", "Agli detail kya de sakte hain?"))
-    return {"question": question, "urdu_question": urdu, "known_context": draft.fields}
+    return ResponsePlan(
+        purpose="ask", expected_concept=field, question=question,
+        urdu_question=urdu, known_context=draft.fields,
+    )
 
 
 async def policy_answer(db, draft, message):
@@ -311,23 +341,42 @@ async def category_policy_context(db):
 
 
 def repair_candidate(message, draft, candidate):
-    """Use the conservative fallback only when provider output misses clear bounded data."""
+    """Supplement provider output with non-conflicting, bounded explicit facts."""
     fallback = development_candidates(message, draft)
-    if fallback.intent in {"policy", "balance", "help"}:
-        fallback.governance_signal = candidate.governance_signal or fallback.governance_signal
-        fallback.governance_confidence = max(
-            candidate.governance_confidence, fallback.governance_confidence
+    facts = {**fallback.facts, **candidate.facts}
+    corrections = {**fallback.corrections, **candidate.corrections}
+    for corrected_field in candidate.corrections:
+        facts.pop(corrected_field, None)
+    use_fallback_intent = (
+        fallback.intent in {"policy", "balance", "help"}
+        or (
+            candidate.intent == "general" and fallback.intent == "request"
+            and bool(fallback.facts or draft.last_question_field)
         )
-        return fallback
-    model_values = bool(candidate.facts or candidate.corrections or candidate.inferred_leave_category)
-    fallback_values = bool(fallback.facts or fallback.inferred_leave_category)
-    if not model_values and fallback_values:
-        fallback.governance_signal = candidate.governance_signal or fallback.governance_signal
-        fallback.governance_confidence = max(
-            candidate.governance_confidence, fallback.governance_confidence
-        )
-        return fallback
-    return candidate
+    )
+    fallback_inference = (
+        fallback.inferred_leave_category
+        if not candidate.inferred_leave_category else candidate.inferred_leave_category
+    )
+    inference_confidence = (
+        fallback.inference_confidence
+        if not candidate.inferred_leave_category else candidate.inference_confidence
+    )
+    return candidate.model_copy(update={
+        "intent": fallback.intent if use_fallback_intent else candidate.intent,
+        "request_type": candidate.request_type or fallback.request_type,
+        "requested_domain": candidate.requested_domain or fallback.requested_domain,
+        "facts": facts,
+        "corrections": corrections,
+        "field_sources": {**fallback.field_sources, **candidate.field_sources},
+        "inferred_leave_category": fallback_inference,
+        "inference_confidence": inference_confidence,
+        "language_signal": candidate.language_signal or fallback.language_signal,
+        "language_confidence": max(candidate.language_confidence, fallback.language_confidence),
+        "governance_signal": candidate.governance_signal or fallback.governance_signal,
+        "governance_confidence": max(candidate.governance_confidence, fallback.governance_confidence),
+        "ambiguities": list(dict.fromkeys([*candidate.ambiguities, *fallback.ambiguities])),
+    })
 
 
 def enforce_date_ambiguity(message, draft, candidate):
@@ -345,6 +394,27 @@ def enforce_date_ambiguity(message, draft, candidate):
         "corrections": corrections,
         "ambiguities": list(dict.fromkeys([*candidate.ambiguities, "start_date"])),
     })
+
+
+def preserve_last_required_explanation(message, draft, candidate):
+    """Retain a substantive free-form answer to the server's explanation question."""
+    field = {
+        "leave": "reason", "reimbursement": "description", "it_access": "justification",
+    }.get(draft.request_type)
+    if not field or draft.fields.get(field) or field in candidate.facts or field in candidate.corrections:
+        return candidate
+    was_requested = draft.last_question_field == field or draft.missing_fields == [field]
+    text = message.strip()
+    if (
+        not was_requested or candidate.intent != "request" or "?" in text
+        or len(re.findall(r"\b\w+\b", text)) < 2
+    ):
+        return candidate
+    facts = dict(candidate.facts)
+    facts[field] = text
+    sources = dict(candidate.field_sources)
+    sources[field] = "explicit"
+    return candidate.model_copy(update={"facts": facts, "field_sources": sources})
 
 
 async def balance_answer(employee):
@@ -399,12 +469,12 @@ async def processed_response(db, draft, *, compose=True):
     request.retrieved_policy_refs = []
     terminal = terminal_from_request(request)
     draft.terminal = terminal.model_dump(mode="json")
-    message = await compose_response(draft, "terminal", {
-        "status": terminal.status.value,
-        "decision": terminal.decision.value,
-        "request_id": str(terminal.request_id),
-        "destination": terminal.destination,
-    }) if compose else status_message(request, draft.language)
+    terminal_plan = ResponsePlan(purpose="terminal", terminal=TerminalResponseContext(
+        status=terminal.status.value,
+        decision=terminal.decision.value,
+        destination=terminal.destination,
+    ))
+    message = await compose_response(draft, terminal_plan) if compose else status_message(request, draft.language)
     return response(
         draft, message, response_type="request_processed",
         request_details=request, terminal=terminal,
@@ -550,6 +620,7 @@ async def handle_message(db, employee, payload):
     else:
         candidate = repair_candidate(message, draft, candidate)
     candidate = enforce_date_ambiguity(message, draft, candidate)
+    candidate = preserve_last_required_explanation(message, draft, candidate)
     update_language(draft, candidate)
     await record_incident(db, draft, employee, candidate, message)
 
@@ -557,44 +628,48 @@ async def handle_message(db, employee, payload):
         if candidate.intent == "request_policy":
             merge_candidates(draft, candidate, message)
         answer, retrieval_mode, _ = await policy_answer(db, draft, message)
-        composed = await compose_response(draft, "policy", {
-            "answer": answer,
-            "draft_preserved": bool(draft.fields),
-        })
+        composed = await compose_response(draft, ResponsePlan(
+            purpose="policy", answer=answer, draft_preserved=bool(draft.fields),
+        ))
         return await save_conversational_response(
             db, draft, message, composed, response_type="policy_info",
             retrieval_mode=retrieval_mode,
         )
     if candidate.intent == "balance":
         answer = await balance_answer(employee)
-        composed = await compose_response(draft, "balance", {
-            "answer": answer, "draft_preserved": bool(draft.fields),
-        })
+        composed = await compose_response(draft, ResponsePlan(
+            purpose="balance", answer=answer, draft_preserved=bool(draft.fields),
+        ))
         return await save_conversational_response(
             db, draft, message, composed, response_type="policy_info"
         )
     if candidate.intent == "help":
         field = draft.missing_fields[0] if draft.missing_fields else None
-        context = question_context(draft, field) if field else {}
-        context["guidance"] = (
+        question_plan = question_context(draft, field) if field else None
+        guidance = (
             "Tell me the part you know in your own words. "
-            + (context.get("question") or "I can explain the next step.")
+            + (question_plan.question if question_plan else "I can explain the next step.")
         )
-        context["urdu_guidance"] = (
+        urdu_guidance = (
             "Jo detail aap jaante hain apne alfaaz mein bata dein. "
-            + (context.get("urdu_question") or "Main agla step samjha deta hoon.")
+            + (question_plan.urdu_question if question_plan else "Main agla step samjha deta hoon.")
         )
-        composed = await compose_response(draft, "help", context)
+        composed = await compose_response(draft, ResponsePlan(
+            purpose="help", expected_concept=field,
+            question=question_plan.question if question_plan else None,
+            urdu_question=question_plan.urdu_question if question_plan else None,
+            known_context=draft.fields, guidance=guidance, urdu_guidance=urdu_guidance,
+        ))
         return await save_conversational_response(
             db, draft, message, composed, response_type="chat"
         )
 
     expected_domain = REQUEST_DOMAIN.get(candidate.request_type)
     if expected_domain and expected_domain != draft.domain:
-        composed = await compose_response(draft, "out_of_domain", {
-            "current_domain": DOMAIN_LABELS[draft.domain],
-            "requested_domain": DOMAIN_LABELS[expected_domain],
-        })
+        composed = await compose_response(draft, ResponsePlan(
+            purpose="out_of_domain", current_domain=DOMAIN_LABELS[draft.domain],
+            requested_domain=DOMAIN_LABELS[expected_domain],
+        ))
         return await save_conversational_response(
             db, draft, message, composed, response_type="chat"
         )
@@ -613,9 +688,18 @@ async def handle_message(db, employee, payload):
         "HELP": "help",
         "GENERAL": "general",
     }[action]
-    context = question_context(draft, detail) if action == "ASK" else {}
-    composed = await compose_response(draft, purpose, context)
-    draft.last_question = composed if action in {"ASK", "AMBIGUOUS_DATE", "INVALID_DATE", "PAST_DATE", "DATE_CONFLICT"} else draft.last_question
+    if action == "ASK":
+        response_plan = question_context(draft, detail)
+    elif action == "EVIDENCE_GATE":
+        response_plan = ResponsePlan(purpose=purpose, evidence=EvidenceResponseContext(
+            category=draft.fields["leave_type"], duration_days=draft.fields["duration_days"],
+        ))
+    else:
+        response_plan = ResponsePlan(purpose=purpose, known_context=draft.fields)
+    composed = await compose_response(draft, response_plan)
+    if action in {"ASK", "AMBIGUOUS_DATE", "INVALID_DATE", "PAST_DATE", "DATE_CONFLICT"}:
+        draft.last_question = composed
+        draft.last_question_field = detail if action == "ASK" else "start_date"
     return await save_conversational_response(
         db, draft, message, composed, response_type="chat",
         upload_available=action == "EVIDENCE_GATE",

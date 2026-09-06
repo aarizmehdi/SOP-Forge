@@ -24,7 +24,7 @@ The conversation layer has two responsibilities.
 
 It cannot assert identity, approval, rejection, routing, balances, permissions, evidence existence, manager approval, or executable policy results. Model values outside server-approved fields and taxonomies are discarded. A configurable confidence threshold controls whether an inferred material category is accepted.
 
-**Response composition** receives a bounded, authoritative server response plan after validation, retrieval, and any DMN execution. It writes professional employee-facing wording for the selected domain and established language. It cannot alter the response type, UI state, allowed actions, validated fields, request identifier, status, decision, or review destination. Deterministic wording is used only when the provider is unavailable or returns invalid output.
+**Response composition** receives a typed, authoritative server response plan after validation, retrieval, and any DMN execution. `ASK` identifies the exact unresolved business concept and known facts. `EVIDENCE_GATE` contains the category, working-day duration, evidence requirement, and the two available actions. `TERMINAL` contains the result, destination, and terminal actions. Purpose-specific validators reject prose that asks the wrong question, re-asks known information, contradicts state, omits evidence actions, exposes a UUID, invites more terminal chat, or promises unsupported follow-up. Invalid output is discarded and replaced with deterministic wording. Welcome and collection replies are normally limited to one or two concise sentences; policy and help replies may be longer when the question needs explanation.
 
 ### Server and Python
 
@@ -79,7 +79,9 @@ Starting over clears the client session and returns to `DOMAIN_SELECTION`; choos
 
 The server supplies the model with the selected domain, allowed field names and enum values, organization date, a compact draft summary, the last unresolved need, relevant policy excerpts when needed, and a bounded recent history. Structured draft fields remain the business memory. Recent turns provide conversational reference and prevent blind repetition.
 
-Explicit facts and corrections are applied only after field-family, taxonomy, and type validation. Obvious leave categories may be inferred within `annual`, `sick`, `casual`, and `unpaid`. The server accepts an inferred category only at or above `CATEGORY_INFERENCE_CONFIDENCE_THRESHOLD`; otherwise it asks a contextual clarification. Organization policy context guides classifications such as a family surgery without adding organization-specific Python synonym trees.
+Explicit facts and corrections are applied only after field-family, taxonomy, and type validation. Provider output and the bounded deterministic parser are repaired field by field: non-conflicting explicit parser facts supplement omitted model fields, while an explicit model correction wins for the corrected field. A partial model result therefore cannot erase an explicit duration, date, amount, system name, or other independently bounded fact.
+
+Obvious leave categories may be inferred within `annual`, `sick`, `casual`, and `unpaid`. The server accepts an inferred category only at or above `CATEGORY_INFERENCE_CONFIDENCE_THRESHOLD`; otherwise it asks a contextual clarification. The active policy defines the employee's own illness, injury, medical recovery, and appointments as sick leave, so a clear broken leg or fractured ankle is a strong sick-leave candidate. A relative's medical event remains a casual-leave candidate under the active policy. The turn-understanding contract preserves the employee's free-form explanation, and a generic server safety rule retains a substantive answer when `reason`, expense `description`, or access `justification` is the last requested required field.
 
 Policy, balance, help, and explanation questions interrupt collection without changing or submitting the draft. The assistant answers the question, preserves all collected fields, and then offers contextual guidance toward the unresolved information. Confusion and frustration produce a new helpful explanation instead of repeating an identical prompt. Profanity alone does not change the session language or create an incident.
 
@@ -87,7 +89,9 @@ Language is selected from meaningful content and retained unless the employee ex
 
 ## Date handling
 
-The conversation layer may propose a normalized date using the authoritative organization date. Python validates every proposed date before persistence. The deterministic parser also accepts common natural English and Roman Urdu expressions, including named months, ordinal dates, relative dates, and `this` or `next` weekdays. Ambiguous numeric dates such as `10/11` remain unresolved and receive a natural clarification describing the alternatives.
+The conversation layer may propose a normalized date using the authoritative organization date. Python validates every proposed date before persistence. The deterministic parser also accepts common natural English and Roman Urdu expressions, including named months, ordinal dates, relative dates, and `this` or `next` weekdays. It corrects a close, isolated spelling error in common English date words, so `tommorow till 20 septemeber` resolves safely. Ambiguous numeric dates such as `10/11` remain unresolved and receive a natural clarification describing the alternatives.
+
+The seeded active SOP defines leave entitlements, sick-evidence thresholds, and instance limits in working days. Leave normalization, derived end dates, extracted duration metadata, evidence checks, HRMS balance comparison, and DMN evaluation therefore use inclusive Monday-through-Friday working-day arithmetic. For example, three working days starting Friday end on Tuesday. The current source does not provide an authoritative organization holiday calendar, so public holidays are not subtracted; adding that calendar requires an authoritative HRMS or policy source rather than an invented list.
 
 Employees never see parser identifiers, planner actions, internal field names, raw exceptions, or instructions to enter ISO dates. A deterministic pre-submit check rejects past start dates conversationally and keeps the draft active. The existing DMN zero-backdate rule remains authoritative during final evaluation.
 
@@ -106,7 +110,7 @@ Conversation incidents are typed and separate from SOP requests. Allowed categor
 
 ## Failure behavior
 
-Invalid or unavailable turn-understanding output preserves the authoritative draft and uses a professional fallback that asks the employee to restate the relevant information. Invalid or unavailable response-composition output uses a deterministic fallback generated from safe response descriptors. Retrieval failures remain explanatory failures and do not change DMN behavior. Authoritative infrastructure failures retain the existing fail-closed human-review behavior. Interrupted attachment and submission transitions retain their recoverable compare-and-set protections.
+Invalid or unavailable turn-understanding output preserves the authoritative draft and uses bounded extraction for clear facts. A valid but partial model candidate is repaired without replacing unrelated model values. Invalid or semantically inconsistent response-composition output uses a deterministic fallback generated from the typed response plan. Retrieval failures remain explanatory failures and do not change DMN behavior. Authoritative infrastructure failures retain the existing fail-closed human-review behavior. Interrupted attachment and submission transitions retain their recoverable compare-and-set protections.
 
 ## Acceptance criteria
 
@@ -125,6 +129,8 @@ V2 is accepted when all of the following are verified:
 11. The standard `/api/request/submit` form path still validates and executes through the existing request schemas and DMN workflow.
 12. Existing ownership, authorization, attachment security, lifecycle serialization, failure recovery, audit, retrieval-status, and concurrency regressions continue to pass.
 13. Permanent backend and frontend tests cover cases A through P in this specification, and the ignored live suite covers at least 30 adversarial, natural, English, Roman Urdu, code-switched, correction, side-question, frustration, evidence, policy, and terminal conversations when DeepSeek is configured.
+14. A clear self-injury is retained as the reason and confidently classified as sick leave under the active policy; a direct `5 days` answer is stored immediately and the next response cannot ask for duration again.
+15. Red-team PASS requires both correct authoritative state and semantically correct employee-facing text, including concept-specific questions, evidence explanation, terminal closure, and absence of unsupported promises.
 
 ## Implementation and verification
 
@@ -137,10 +143,14 @@ Implemented on `refactor/conversational-ai-v2`:
 - Added explicit start and evidence-skip APIs, database-confirmed evidence upload finalization, structured terminal results, and authoritative UI states/actions.
 - Rebuilt the chat UI around `DOMAIN_SELECTION`, `ACTIVE_CHAT`, `EVIDENCE_GATE`, and `TERMINAL`, including the four domain choices, the exact upload/skip transaction gate, deterministic outcome titles, and new-conversation reset.
 - Preserved the form submission endpoint, request schemas, workflow/DMN authority, retrieval adapter statuses, ownership checks, evidence authorization, and fail-closed workflow recovery.
+- Repaired partial candidates field by field, strengthened the free-form reason contract and last-required-explanation safety rule, and added policy-guided self-injury inference.
+- Added typo-tolerant date-word normalization and aligned leave range, derived end date, evidence threshold, extracted metadata, HRMS balance, and DMN calculations with the seeded SOP's working-day semantics.
+- Replaced generic response descriptors with typed purpose plans and semantic output validation. Evidence messages cannot collect request facts, terminal messages cannot invite chat or make unsupported promises, and generated text that violates the plan is discarded.
+- Strengthened the 30-conversation red-team verdict so every turn must match the expected business concept and authoritative UI state. The exact broken-leg transcript and a separate staged `5 days` regression are permanent cases.
 
 Verification completed on 7 September 2026:
 
-- Python: 73/73 tests passed with `python -m unittest tests.test_conversation_engine -q`.
+- Python: 83/83 tests passed with `python -m unittest tests.test_conversation_engine -q`.
 - Frontend: 10/10 tests passed with `node --test backend/tests/frontend_contract.test.js`.
 - Local bounded-fallback red team: 30/30 conversations passed.
 - Live DeepSeek red team: 30/30 conversations passed using the configured provider.

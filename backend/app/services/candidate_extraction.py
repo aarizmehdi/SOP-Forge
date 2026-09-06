@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from app.config import get_settings
 from app.models.incident import IncidentType
+from app.services.normalization import normalize_natural_date_spelling
 
 
 class Candidates(BaseModel):
@@ -40,11 +41,16 @@ server_context. Leave facts: leave_type, start_date, end_date, duration_days,
 half_day, reason. Reimbursement facts: category, amount, currency, description.
 IT facts: system_name, access_level, justification, duration_days. Allowed leave
 categories are annual, sick, casual, unpaid. Mark each material field explicit or
-inferred. Put replacements in corrections. Preserve a human reason such as a
-relative's surgery. Infer the most likely allowed leave category from the active
-policy context when clear and return confidence; do not invent an unsupported
-category. Interpret natural dates relative to current_date when unambiguous, but
-put ambiguous numeric dates such as 10/11 in ambiguities as start_date.
+inferred. Put replacements in corrections. Preserve the employee's concrete,
+free-form explanation as reason, including injuries, fractures, surgery, recovery,
+symptoms, and a relative's medical event. The active policy context defines sick
+leave as the employee's own illness, injury/medical recovery, or appointment; infer
+sick leave with high confidence for a clear employee injury such as a broken leg or
+fractured ankle. Infer the most likely allowed leave category from active policy
+context when clear and return confidence; do not invent an unsupported category.
+Interpret natural dates relative to current_date when unambiguous and tolerate
+ordinary spelling errors. Return normalized ISO dates when confident, but put
+ambiguous numeric dates such as 10/11 in ambiguities as start_date.
 
 Intent can be request, policy, balance, help, general, or request_policy. A policy,
 balance, or help question during collection does not alter facts. Use requested_domain
@@ -138,6 +144,7 @@ DATE_TOKEN = rf"\d{{4}}-\d{{2}}-\d{{2}}|\d{{1,2}}/\d{{1,2}}(?:/\d{{2,4}})?|\d{{1
 def development_candidates(message, draft):
     """Conservative provider-failure fallback; not the primary conversation engine."""
     text = message.lower().strip().rstrip(".! ")
+    normalized_date_text = normalize_natural_date_spelling(text)
     out = Candidates()
     facts = out.facts
     urdu_hits = re.findall(r"\b(mujhe|chutti|chahiye|nahi|bhej|tabiyat|kitn[ae]|kya|kal|aaj)\b", text)
@@ -192,6 +199,14 @@ def development_candidates(message, draft):
         elif re.search(r"\b(?:i have|i am|i'm|mujhe|meri tabiyat).*(?:fever|bukhar|migraine|flu|unwell|bimaar|sick)\b", text):
             out.inferred_leave_category, out.inference_confidence = "sick", 0.96
             out.field_sources["leave_type"] = "inferred"
+        elif re.search(
+            r"(?:\bi (?:have|had|am|was)\b.*\b(?:injur\w*|fractur\w*|broken|surgery|operation|medical|doctor|hospital|recover\w*)\b"
+            r"|\bi (?:fractured|broke|injured)\b"
+            r"|\bmy (?!father|mother|parent|child|family)\w+\s+(?:is|was|got)\b.*\b(?:injur\w*|fractur\w*|broken)\b)",
+            text,
+        ):
+            out.inferred_leave_category, out.inference_confidence = "sick", 0.94
+            out.field_sources["leave_type"] = "inferred"
         elif re.search(r"\b(?:vacation|holiday|trip)\b", text):
             out.inferred_leave_category, out.inference_confidence = "annual", 0.94
             out.field_sources["leave_type"] = "inferred"
@@ -203,11 +218,24 @@ def development_candidates(message, draft):
         if reason_match:
             facts["reason"] = reason_match.group(0).strip()
             out.field_sources["reason"] = "explicit"
+        elif re.search(r"\b(?:because|due to)\b", text):
+            reason = re.split(r"\b(?:because|due to)\b", message, maxsplit=1, flags=re.I)[1]
+            reason = re.split(rf"\b(?:from|starting|on)\s+(?={DATE_TOKEN})", reason, maxsplit=1, flags=re.I)[0]
+            reason = reason.strip(" ,.-")
+            if len(reason.split()) >= 2:
+                facts["reason"] = reason
+                out.field_sources["reason"] = "explicit"
         elif draft.missing_fields and draft.missing_fields[0] == "reason" and len(text) >= 4 and not text.endswith("?"):
             facts["reason"] = message.strip()
             out.field_sources["reason"] = "explicit"
+        elif out.inferred_leave_category and out.inference_confidence >= 0.9 and not text.endswith("?"):
+            explanation = re.split(r"\b(?:that'?s why|so)\s+i\s+(?:need|want)\b", message, maxsplit=1, flags=re.I)[0]
+            explanation = explanation.strip(" ,.-")
+            if len(explanation.split()) >= 3:
+                facts["reason"] = explanation
+                out.field_sources["reason"] = "explicit"
 
-        date_text = text.split(",", 1)[1] if text.startswith("not ") and "," in text else text
+        date_text = normalized_date_text.split(",", 1)[1] if text.startswith("not ") and "," in text else normalized_date_text
         dates = re.findall(DATE_TOKEN, date_text)
         if dates:
             facts["start_date"] = dates[0]

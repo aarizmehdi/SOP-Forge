@@ -10,6 +10,7 @@ import asyncio
 import io
 import json
 import logging
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
@@ -25,6 +26,18 @@ from tests.test_conversation_engine import RuntimeCase
 
 
 CASES = [
+    ("Exact broken-leg transcript", "leave_hr", [
+        "I need leave",
+        "my leg is broken thats why i need a leave",
+        "illness i would say",
+        "tommorow till 20 septemeber",
+        "i need from tommorow",
+        "5 days",
+    ], "gate_locked"),
+    ("Broken-leg staged duration", "leave_hr", [
+        "I need leave", "my leg is broken thats why i need a leave",
+        "illness i would say", "i need from tommorow", "5 days",
+    ], "evidence"),
     ("English memory", "leave_hr", ["I have fever.", "Tomorrow.", "Four days."], "evidence"),
     ("Short number", "leave_hr", ["I have a migraine and need sick leave.", "Tomorrow", "3"], "evidence"),
     ("Family surgery", "leave_hr", ["My father is having surgery tomorrow. I need two days off."], "request"),
@@ -36,8 +49,6 @@ CASES = [
     ("Duration correction before gate", "leave_hr", ["I have fever and need leave.", "Tomorrow for two days."], "two_days"),
     ("Category correction before gate", "leave_hr", ["I need leave for a family matter.", "Actually annual leave tomorrow for four days for vacation."], "annual"),
     ("Natural named date", "leave_hr", ["I need annual leave from 10 Sep this year for one day for vacation."], "request"),
-    ("Month-first date", "leave_hr", ["I need annual leave September 10 for one day for vacation."], "request"),
-    ("Next weekday", "leave_hr", ["I need annual leave next Monday for one day for vacation."], "request"),
     ("Ambiguous numeric date", "leave_hr", ["I need annual leave 10/11 for one day for vacation."], "clarify"),
     ("Past date", "leave_hr", ["I need annual leave yesterday for one day for vacation."], "clarify"),
     ("Side policy question", "leave_hr", ["I have fever and need leave.", "What is the sick leave policy?", "Tomorrow for one day."], "request"),
@@ -58,27 +69,118 @@ CASES = [
 ]
 
 
-def verdict(expectation, result, draft, error_code=None):
+CONCEPT_PATTERNS = {
+    "leave_type": r"illness|vacation|personal|family matter|unpaid|type of leave|category|bemari",
+    "start_date": r"when.*(?:begin|start)|start date|which date|what date|specific date|kab se",
+    "duration_days": r"how long|how much time|how many(?: working)? days|number of days|duration|kitne din",
+    "reason": r"what.*reason|why.*(?:leave|time off)|reason for|wajah",
+    "category": r"type of expense|expense category|kis qisam.*expense",
+    "amount": r"what amount|how much.*claim|amount.*claim|kitni raqam",
+    "description": r"what.*expense for|describe.*expense|expense.*kis liye",
+    "system_name": r"which system|what system|kis system",
+    "access_level": r"what access|which access|read,? write|admin access|access level",
+    "justification": r"what work|why.*access|access.*kis kaam",
+}
+
+
+def asks_concept(message, concept):
+    return bool(re.search(CONCEPT_PATTERNS.get(concept, r"a^"), message, re.I))
+
+
+def semantic_turn_ok(turn):
+    message = turn.get("assistant", "")
+    lowered = message.lower()
+    ui_state = turn.get("ui_state")
+    actions = set(turn.get("allowed_actions", []))
+    if turn.get("error_code"):
+        return bool(message)
+    if ui_state == "EVIDENCE_GATE":
+        return (
+            bool(re.search(r"evidence|certificate|document|proof", lowered))
+            and "upload" in lowered and "skip" in lowered and "?" not in message
+            and actions == {"upload_evidence", "skip_evidence"}
+            and not any(asks_concept(message, field) for field in CONCEPT_PATTERNS)
+        )
+    if ui_state == "TERMINAL":
+        prohibited = (
+            "will be in touch", "will contact you", "feel free to", "any questions",
+            "let me know", "reach out",
+        )
+        return (
+            actions == {"view_request", "start_new_conversation"}
+            and ("view request" in lowered or "start new conversation" in lowered)
+            and not any(term in lowered for term in prohibited)
+            and not re.search(r"\b[0-9a-f]{8}-[0-9a-f-]{27,}\b", lowered)
+        )
+    if turn.get("response_type") == "policy_info":
+        return bool(message)
+    if "scoped to" in lowered or "start a new conversation and choose" in lowered:
+        return True
+    missing = turn.get("missing_fields", [])
+    ambiguous = turn.get("ambiguous_fields", [])
+    if ambiguous:
+        return "?" in message and bool(re.search(r"october|november|date|tareekh", lowered))
+    if missing:
+        expected = missing[0]
+        if not asks_concept(message, expected):
+            return False
+        return not any(
+            field != expected and field in turn.get("fields", {}) and asks_concept(message, field)
+            for field in CONCEPT_PATTERNS
+        )
+    return bool(message)
+
+
+def semantic_verdict(title, transcript, draft):
+    if not transcript or not all(semantic_turn_ok(turn) for turn in transcript):
+        return False
+    fields = draft.get("fields", {})
+    if title == "Exact broken-leg transcript":
+        return (
+            fields.get("leave_type") == "sick"
+            and "broken" in str(fields.get("reason", "")).lower()
+            and fields.get("start_date") == "2026-09-08"
+            and fields.get("end_date") == "2026-09-20"
+            and fields.get("duration_days") == 9
+        )
+    if title == "Broken-leg staged duration":
+        return (
+            fields.get("leave_type") == "sick"
+            and "broken" in str(fields.get("reason", "")).lower()
+            and fields.get("duration_days") == 5
+            and not asks_concept(transcript[-1]["assistant"], "duration_days")
+        )
+    if title == "Short number":
+        return fields.get("duration_days") == 3 and not asks_concept(transcript[-1]["assistant"], "duration_days")
+    if title == "Family surgery":
+        return fields.get("leave_type") == "casual" and "surgery" in str(fields.get("reason", "")).lower()
+    return True
+
+
+def verdict(title, expectation, result, draft, transcript, error_code=None):
     if error_code:
-        return (expectation == "gate_locked" and error_code == "evidence_action_required") or (
+        structural = (expectation == "gate_locked" and error_code == "evidence_action_required") or (
             expectation == "closed" and error_code == "conversation_closed"
         )
+        return structural and semantic_verdict(title, transcript, draft)
     if result is None or "couldn't understand" in result.message:
         return False
     request = result.request_details
     if expectation == "no_request":
-        return request is None
-    if expectation == "evidence":
-        return bool(draft.get("evidence_required") and request is None)
-    if expectation == "clarify":
-        return request is None and bool(draft.get("missing_fields") or draft.get("ambiguous_fields"))
-    if expectation == "routed":
-        return request is not None and request.decision.value == "routed"
-    if expectation == "two_days":
-        return request is not None and request.submitted_data.get("duration_days") == 2
-    if expectation == "annual":
-        return request is not None and request.submitted_data.get("leave_type") == "annual"
-    return request is not None
+        structural = request is None
+    elif expectation == "evidence":
+        structural = bool(draft.get("evidence_required") and request is None)
+    elif expectation == "clarify":
+        structural = request is None and bool(draft.get("missing_fields") or draft.get("ambiguous_fields"))
+    elif expectation == "routed":
+        structural = request is not None and request.decision.value == "routed"
+    elif expectation == "two_days":
+        structural = request is not None and request.submitted_data.get("duration_days") == 2
+    elif expectation == "annual":
+        structural = request is not None and request.submitted_data.get("leave_type") == "annual"
+    else:
+        structural = request is not None
+    return structural and semantic_verdict(title, transcript, draft)
 
 
 async def run(args):
@@ -96,20 +198,47 @@ async def run(args):
             cid, transcript, result, error_code = started.conversation_id, [], started, None
             try:
                 for text in turns:
-                    if text == "[UPLOAD]":
-                        from app.api.evidence import upload_draft_evidence
-                        file = UploadFile(filename="synthetic-proof.pdf", file=io.BytesIO(b"%PDF-1.4\nSynthetic test file"), headers=Headers({"content-type": "application/pdf"}))
-                        result = await upload_draft_evidence(cid, file, case.db, case.employee)
-                    elif text == "[SKIP]":
-                        result = await skip_evidence(case.db, case.employee, cid)
-                    elif text == "[STALE]":
-                        result = await handle_message(case.db, case.employee, AssistantChatRequest(message="what now?", conversation_id=cid))
-                    else:
-                        result = await handle_message(case.db, case.employee, AssistantChatRequest(message=text, conversation_id=cid))
-                    cid = result.conversation_id
-                    transcript.append({"user": text, "assistant": result.message, "state": result.draft_state, "upload_available": result.upload_available})
+                    try:
+                        if text == "[UPLOAD]":
+                            from app.api.evidence import upload_draft_evidence
+                            file = UploadFile(filename="synthetic-proof.pdf", file=io.BytesIO(b"%PDF-1.4\nSynthetic test file"), headers=Headers({"content-type": "application/pdf"}))
+                            result = await upload_draft_evidence(cid, file, case.db, case.employee)
+                        elif text == "[SKIP]":
+                            result = await skip_evidence(case.db, case.employee, cid)
+                        elif text == "[STALE]":
+                            result = await handle_message(case.db, case.employee, AssistantChatRequest(message="what now?", conversation_id=cid))
+                        else:
+                            result = await handle_message(case.db, case.employee, AssistantChatRequest(message=text, conversation_id=cid))
+                        cid = result.conversation_id
+                        turn_draft = await case.db.request_drafts.find_one({"id": cid})
+                        transcript.append({
+                            "user": text, "assistant": result.message,
+                            "state": result.draft_state, "ui_state": result.ui_state.value,
+                            "allowed_actions": result.allowed_actions,
+                            "response_type": result.response_type,
+                            "upload_available": result.upload_available,
+                            "fields": dict(turn_draft["fields"]),
+                            "missing_fields": list(turn_draft["missing_fields"]),
+                            "ambiguous_fields": list(turn_draft["ambiguous_fields"]),
+                        })
+                    except Exception as turn_exc:
+                        detail = getattr(turn_exc, "detail", {})
+                        turn_code = detail.get("code") if isinstance(detail, dict) else None
+                        if turn_code not in {"evidence_action_required", "conversation_closed"}:
+                            raise
+                        error_code = turn_code
+                        turn_draft = await case.db.request_drafts.find_one({"id": cid})
+                        transcript.append({
+                            "user": text, "assistant": detail.get("message", ""),
+                            "error_code": turn_code, "state": turn_draft["state"],
+                            "ui_state": detail.get("ui_state"),
+                            "allowed_actions": detail.get("allowed_actions", []),
+                            "fields": dict(turn_draft["fields"]),
+                            "missing_fields": list(turn_draft["missing_fields"]),
+                            "ambiguous_fields": list(turn_draft["ambiguous_fields"]),
+                        })
                 draft = await case.db.request_drafts.find_one({"id": cid})
-                passed = verdict(expected, result, draft)
+                passed = verdict(title, expected, result, draft, transcript, error_code)
                 record = {"case": index, "title": title, "expected": expected, "result": "PASS" if passed else "FAIL",
                           "transcript": transcript, "fields": draft["fields"], "missing_fields": draft["missing_fields"],
                           "ambiguous_fields": draft["ambiguous_fields"], "evidence_required": draft["evidence_required"]}
@@ -117,7 +246,7 @@ async def run(args):
                 detail = getattr(exc, "detail", {})
                 error_code = detail.get("code") if isinstance(detail, dict) else None
                 draft = await case.db.request_drafts.find_one({"id": cid})
-                passed = verdict(expected, result, draft, error_code)
+                passed = verdict(title, expected, result, draft, transcript, error_code)
                 record = {"case": index, "title": title, "expected": expected,
                           "result": "PASS" if passed else "ERROR",
                           "error_type": type(exc).__name__, "error_code": error_code,

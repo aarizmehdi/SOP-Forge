@@ -1,5 +1,6 @@
 """Shared form/chat boundary. All governed input passes this module."""
 import re
+from difflib import get_close_matches
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -22,11 +23,56 @@ def today_local():
     return datetime.now(ZoneInfo(get_settings().organization_timezone)).date()
 
 
+DATE_WORDS = {
+    "today", "tomorrow", "yesterday", "monday", "tuesday", "wednesday",
+    "thursday", "friday", "saturday", "sunday", "january", "february",
+    "march", "april", "may", "june", "july", "august", "september",
+    "october", "november", "december",
+}
+
+
+def normalize_natural_date_spelling(value):
+    """Correct an isolated, close spelling error in common English date words."""
+    if not isinstance(value, str):
+        return value
+    words = re.split(r"(\W+)", value.lower())
+    normalized = []
+    for word in words:
+        if not word.isalpha() or len(word) < 4 or word in DATE_WORDS:
+            normalized.append(word)
+            continue
+        match = get_close_matches(word, DATE_WORDS, n=1, cutoff=0.82)
+        normalized.append(match[0] if match else word)
+    return "".join(normalized)
+
+
+def working_days_inclusive(start, end):
+    """Count Monday-Friday working days in an inclusive date range."""
+    if end < start:
+        raise ValueError("The end date is before the start date. Which dates should I use?")
+    return sum(
+        1 for offset in range((end - start).days + 1)
+        if (start + timedelta(days=offset)).weekday() < 5
+    )
+
+
+def end_date_for_working_days(start, duration):
+    """Return the date containing the final requested Monday-Friday working day."""
+    remaining = int(duration)
+    current = start
+    while True:
+        if current.weekday() < 5:
+            remaining -= 1
+            if remaining == 0:
+                return current
+        current += timedelta(days=1)
+
+
 def resolve_date(value, today=None):
     today = today or today_local()
     if not isinstance(value, str):
         raise ValueError("Please give a date or weekday.")
-    value = value.lower().strip().rstrip(".")
+    value = normalize_natural_date_spelling(value).strip().rstrip(".")
     offsets = {"yesterday": -1, "today": 0, "aaj": 0, "aj": 0, "tomorrow": 1, "kal": 1, "day after tomorrow": 2, "parso": 2}
     if value in offsets:
         return today + timedelta(days=offsets[value])
@@ -93,12 +139,14 @@ def normalize_leave_dates(fields, today=None):
     if half:
         end, duration = start, 0.5
     elif end:
-        calculated = (end - start).days + 1
+        calculated = working_days_inclusive(start, end)
+        if calculated == 0:
+            raise ValueError("The selected range contains no working days. Please choose at least one weekday.")
         if duration is not None and duration != calculated:
             raise ValueError("The dates and number of days disagree. Please clarify the dates or duration.")
         duration = calculated
     elif duration is not None:
-        end = start + timedelta(days=int(duration) - 1)
+        end = end_date_for_working_days(start, duration)
     result["half_day"] = half
     if end:
         result["end_date"] = end.isoformat()

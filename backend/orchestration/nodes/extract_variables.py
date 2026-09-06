@@ -94,6 +94,12 @@ async def _extract_with_llm(request_type: str, employee_code: str, submitted_dat
     else:
         result = json.loads(response_text)
 
+    if request_type == "leave":
+        # Policy math is server-owned; never retain a model-calculated calendar duration.
+        from app.services.normalization import normalize_submission
+        normalized = normalize_submission("leave", submitted_data)
+        result["days_requested"] = normalized["duration_days"]
+
     # Return only updates to the state
     return {
         "extracted_variables": result,
@@ -115,7 +121,8 @@ async def _extract_with_rules(request_type: str, submitted_data: dict) -> dict:
             from datetime import date as date_cls
             start = date_cls.fromisoformat(submitted_data["start_date"])
             end = date_cls.fromisoformat(submitted_data["end_date"])
-            days = (end - start).days + 1
+            from app.services.normalization import working_days_inclusive
+            days = working_days_inclusive(start, end)
             if submitted_data.get("half_day"):
                 days = 0.5
             result["days_requested"] = days

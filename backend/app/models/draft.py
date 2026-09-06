@@ -52,6 +52,7 @@ class RequestDraft(BaseModel):
     request_id: str | None = None
     preflight: dict = Field(default_factory=dict)
     last_question: str | None = None
+    last_question_field: str | None = None
     recent_turns: list[ConversationTurn] = Field(default_factory=list)
     language_confidence: float = 0.0
     terminal: dict | None = None
