@@ -24,8 +24,9 @@ See [the runtime architecture](SOP_FORGE_PHASE1_RUNTIME_ARCHITECTURE.md) for the
 | `backend/app/services/candidate_extraction.py` | One DeepSeek candidate extraction; clearly limited offline development interpreter. |
 | `backend/app/services/normalization.py` | Date arithmetic, field families and shared request-schema boundary. |
 | `backend/app/services/conversation_service.py` | Draft persistence/merge, preflight, deterministic planner, consent guards, submission and truthful status. |
+| `backend/app/services/policy_retrieval.py` | Typed retrieval adapter (`match`, `no_match`, `degraded`, `error`) around the current MongoDB/Python implementation. |
 | `backend/tests/fakes.py` | Isolated Mongo-compatible test adapter; never used for application persistence. |
-| `backend/tests/test_conversation_engine.py` | 51 regression tests, including all 26 numbered specification scenarios. |
+| `backend/tests/test_conversation_engine.py` | 54 regression tests, including all 26 numbered specification scenarios and final hardening coverage. |
 | `backend/tests/frontend_contract.test.js` | Executable JS API, file authorization and status-display contracts. |
 | `backend/tests/redteam_conversations.py` | 30 engineer-authored live-provider conversation exercises and transcript capture. |
 | `backend/tests/probe_runtime.py` | Read-only dependency/provider/database availability check without credential output. |
@@ -37,27 +38,29 @@ See [the runtime architecture](SOP_FORGE_PHASE1_RUNTIME_ARCHITECTURE.md) for the
 
 | File | Exact responsibility changed |
 |---|---|
-| `backend/app/api/request.py` | Replaced giant chat endpoint with service delegation; guarded workflow persistence against human decisions; sanitized failure text and recorded workflow failure events. |
+| `backend/app/api/request.py` | Replaced giant chat endpoint with service delegation; guarded workflow persistence against human decisions; sanitized failure text; recorded workflow failures; enforced direct-read ownership/department/organization scope. |
 | `backend/app/api/evidence.py` | Added owned draft uploads; centralized authorization; bounded reads/signature checks; safe filenames; private metadata filtering; human-review-only request attachment updates and protected file serving. |
 | `backend/app/config.py` | Organization timezone and positive configurable sick-evidence threshold. |
 | `backend/app/models/audit.py` | Draft creation, attachment, omission and workflow failure audit events. |
 | `backend/app/models/evidence.py` | Evidence can link to a draft before linking to a request. |
-| `backend/app/schemas/request.py` | Request-specific categories/access/currency/numeric validation; normalized submissions; conversation ID, draft state, upload availability and retrieval mode; removed suggestion options. |
-| `backend/app/services/request_service.py` | Shared normalization; stable request identity; best-effort Redis; stricter department checks; guarded human updates; more-info remains routed/escalated; overrides limited to approval/rejection. |
+| `backend/app/schemas/request.py` | Request-specific categories/access/currency/numeric validation; normalized submissions; conversation ID, draft state, upload availability and retrieval mode; typed evidence metadata on request responses; removed suggestion options. |
+| `backend/app/services/request_service.py` | Shared normalization; stable request identity; best-effort Redis; direct-read and review department checks; guarded human updates; more-info remains routed/escalated; overrides limited to approval/rejection. |
 | `backend/app/services/sop_service.py` | Replaced hash similarity with explicitly degraded keywords; tagged real embedding provenance; excluded untagged legacy vectors; retained MongoDB/Python retrieval. |
 | `backend/app/integrations/hrms_mock.py` | Restricted Engineering overlap to fixed October 12–14, 2026 scenario. |
 | `backend/orchestration/graph.py` | Removed second interpretation; validated entry data; maintained enum-compatible failure outcomes. |
-| `backend/orchestration/state.py` | Added authoritative evidence/policy availability fields; removed chain-of-thought terminology from active state documentation. |
+| `backend/orchestration/state.py` | Added authoritative evidence and typed retrieval-status fields; removed chain-of-thought terminology from active state documentation. |
 | `backend/orchestration/edges.py` | Removed unsupported evidence-decision assumptions. |
 | `backend/orchestration/nodes/intake.py` | Authoritative evidence lookup, requester exclusion from overlap, correct rolling 30-day arithmetic. |
-| `backend/orchestration/nodes/dmn_rule_engine.py` | Normalized/coherent inputs; safe unavailable-data handling; corrected half-day/evidence rules and valid lifecycle results. |
+| `backend/orchestration/nodes/dmn_rule_engine.py` | Normalized/coherent inputs; safe authoritative-data handling; removed retrieval availability from business decisions; corrected half-day/evidence rules and valid lifecycle results. |
 | `backend/orchestration/nodes/escalate.py` | Removed invalid awaiting_evidence values; preserved deterministic resolved rejection. |
-| `backend/orchestration/nodes/retrieve_policy.py` | Explicit unavailable/no-match flag consumed by DMN; no raw retrieval errors in employee-visible data. |
-| `backend/orchestration/nodes/audit_log.py` | Added DMN event recording; audit failure cannot silently complete approval. |
+| `backend/orchestration/nodes/retrieve_policy.py` | Consumes the typed adapter, separates no-match from provider error, and supplies references without coupling either outcome to DMN. |
+| `backend/orchestration/nodes/audit_log.py` | Added DMN event and retrieval-status recording; audit failure cannot silently complete approval. |
+| `frontend/js/app.js` | Added shared HTML escaping and DOM-safe toast rendering. |
+| `frontend/js/components/admin-panel.js`, `audit-viewer.js`, `dashboard.js`, `incidents.js` | Escaped API/user/policy/audit strings before template rendering. |
 | `frontend/js/api.js` | Sends stable conversation ID instead of browser history. |
 | `frontend/js/components/chat-assistant.js` | Server-directed draft upload control, no conversational suggestion cards/chips, safe message rendering, server-owned upload outcome wording. |
-| `frontend/js/components/my-requests.js` | Correct final labels for executive overrides and routed decisions. |
-| `frontend/js/components/review-panel.js` | Authenticated evidence viewing; corrected size metadata and escaped filenames. |
+| `frontend/js/components/my-requests.js` | Correct final labels; escaped request content; rendered `size_bytes`; fetched evidence with bearer authentication into a blob viewer. |
+| `frontend/js/components/review-panel.js` | Escaped employee/reasoning/policy/override content; authenticated evidence viewing; corrected size metadata. |
 | `backend/pyproject.toml`, `backend/requirements.txt`, `requirements.txt` | Declared timezone data and directly used runtime dependencies where missing; existing version pins were not replaced. |
 
 ## E. RequestDraft
@@ -89,7 +92,7 @@ Files remain local storage, as in the original application. No OCR, medical inte
 3. Python calculates inclusive calendar duration and rejects contradictory dates/counts.
 4. Multi-day half-day requests cannot collapse to 0.5 days.
 5. Organization-local date controls backdate evaluation; a resolved backdate rejection is preserved through graph routing.
-6. HRMS failures/unknown employees and unavailable/no-match policy guidance route to review.
+6. HRMS failures/unknown employees route to review. Policy retrieval status and text are not DMN inputs.
 7. Sick leave at the configured threshold requires human review whether evidence exists or not; missing evidence is not an automatic rejection.
 8. Evidence existence comes from MongoDB, never submitted has_evidence/evidence IDs.
 9. Engineering overlap is limited to two approved teammates on 2026-10-12 through 2026-10-14; intake excludes the requester.
@@ -108,18 +111,21 @@ Draft-only states are collecting, awaiting_evidence, attaching_evidence, submitt
 - Real vectors: tagged by provider/model; Python cosine similarity only for compatible tagged vectors.
 - Fallback: empty embedding marker plus normalized keyword retrieval, logged and returned as degraded_keyword for matching results.
 - Legacy hash/untagged vectors: excluded from semantic scoring; re-ingestion is needed for trusted provider metadata.
-- No matching policy: explicit no-policy answer; governed requests route to human review.
+- Adapter contract: typed `match`, `no_match`, `degraded`, and `error` outcomes.
+- No matching policy: explicit no-policy answer; governed requests continue through the same deterministic DMN rules.
+- Retrieval-provider error: explicit unavailable guidance and auditable status; it does not rewrite the business decision.
+- Replacement boundary: a future vector store implements the adapter; workflow and DMN code do not change.
 - **No dedicated vector database was added.** SHA-256 is not described as semantic retrieval.
 
 ## K. Security Boundaries
 
-Browser messages and histories cannot establish roles, manager decisions, balances or file existence. Candidate facts are allowlisted and schema-validated; mixed field families cannot choose another DMN branch. Authenticated IDs own drafts. HRMS supplies balance/profile/overlap. MongoDB supplies evidence and human decisions. Evidence department authorization resolves employee_id → users.department_id, with missing relationships denied. Employee result text comes only from stored status/decision, and chat messages/filenames are escaped before display.
+Browser messages and histories cannot establish roles, manager decisions, balances or file existence. Candidate facts are allowlisted and schema-validated; mixed field families cannot choose another DMN branch. Authenticated IDs own drafts. HRMS supplies balance/profile/overlap. MongoDB supplies evidence and human decisions. Direct request and evidence reads resolve employee ownership and department from server data, with missing relationships denied. Employee result text comes only from stored status/decision. Manager review, employee request detail, dashboard, audit, incident, admin policy, filename, and error/toast strings are escaped or assigned through `textContent` before display.
 
 This refactor does not claim a complete application security audit. Existing authentication/deployment configuration and other unrelated UI surfaces require their own review.
 
 ## L. Test Results
 
-Final automated result: **51 Python tests passed**, **3 executable frontend contract tests passed**, Python compilation/modified-JS syntax checks passed, and `git diff --check` passed. No tests were skipped in those runs. Tests use the real planner, normalizer, graph, request/evidence handlers and HTTP routing, with an isolated Mongo-compatible adapter and deterministic mock HRMS. They do not prove real MongoDB behavior under deployment load.
+Final automated result: **54 Python tests passed**, **6 executable frontend contract tests passed**, Python compilation/all-frontend-JS syntax checks passed, and `git diff --check` passed. No tests were skipped in those runs. Tests use the real planner, normalizer, graph, request/evidence handlers and HTTP routing, with an isolated Mongo-compatible adapter and deterministic mock HRMS. They do not prove real MongoDB behavior under deployment load.
 
 Commands:
 
@@ -168,7 +174,11 @@ git diff --check
 
 Additional tests cover schema injection, malformed values, draft ownership/CAS, policy questions versus consent, model failure, HRMS/RAG/workflow failures, enum serialization, form HTTP compatibility, manager review/override, finalized-request protection, evidence truth, legacy vector exclusion, currency normalization, unsafe file content, explicit/idempotent legacy migration, cache failure and preflight routing.
 
-**Live conversational result:** final sweep **30/30 PASS**, using the configured DeepSeek provider, synthetic employees, real conversation/DMN code, local synthetic upload and isolated test database. English, Roman Urdu, mixed language, greeting-to-Urdu, corrections, short answers, policy-only/hypothetical questions, upload/omission and adversarial claims were exercised. All 30 conversation transcripts were reviewed. Earlier sweeps exposed reason/category omissions, USD notation and ambiguous “no”; these led to fixes and regression coverage. This is evidence of the tested cases, not a guarantee of model consistency for arbitrary language.
+Final hardening regressions additionally cover the direct request-read role/department matrix, all four typed retrieval outcomes, DMN independence for no-match/provider-error results, persisted retrieval status, evidence response serialization, employee authenticated evidence fetches, `size_bytes`, and rendered malicious-string escaping in manager and employee views.
+
+**Live conversational result:** the post-hardening sweep is **30/30 PASS**, using the configured DeepSeek provider, synthetic employees, real conversation/DMN code, local synthetic upload and isolated test database. English, Roman Urdu, mixed language, greeting-to-Urdu, corrections, short answers, policy-only/hypothetical questions, upload/omission and adversarial claims were exercised. All 30 conversation transcripts were reviewed. Earlier sweeps exposed reason/category omissions, USD notation and ambiguous “no”; these led to fixes and regression coverage. This is evidence of the tested cases, not a guarantee of model consistency for arbitrary language.
+
+An additional offline development-parser diagnostic completed **29/30**: it asked again for a reason when the single-turn input said “doctor's appointment.” The configured live-provider suite passed the same case, and the deterministic request engine correctly retained the draft without submitting incomplete data. Candidate-extraction behavior was outside the four confirmed hardening concerns, so no unrelated parser change was included in this commit.
 
 **Manual browser requirement: PARTIAL.** The 30 conversations were engineer-authored, run through the runtime harness and transcript-reviewed; they were not 30 manually operated browser conversations or an independent human red-team round. Browser rendering/file-view behavior was checked by executable JS contracts and syntax, not visual browser UAT.
 
@@ -176,18 +186,29 @@ Additional tests cover schema injection, malformed values, draft ownership/CAS, 
 
 Evidence: [Python log](test-results/regression.log), [frontend log](test-results/frontend.log), [final live transcripts](test-results/redteam-live-deepseek.json), [initial failed live sweep](test-results/redteam-live-deepseek-initial.json), [second sweep](test-results/redteam-live-deepseek-second.json).
 
-## M. Remaining Known Issues
+## M. Final Hardening Review
+
+| Concern | Finding | Root cause | Fix and files | Verification | Remaining limitation |
+|---|---|---|---|---|---|
+| Untrusted content in `innerHTML` | **Confirmed** | Review, request, dashboard, audit, incident, and admin templates interpolated API strings without a common output-encoding boundary. | Added `App.escapeHtml`, changed toast construction to DOM/text, and encoded affected dynamic strings in `frontend/js/app.js` and the review, request, dashboard, audit, incident, and admin components. | Node rendering regressions inject HTML event/script payloads; all six frontend contracts and all JS syntax checks pass. | This was a targeted source review of current first-party views, not a browser penetration test or CSP deployment review. |
+| Direct `GET /api/request/{request_id}` authorization | **Confirmed** | The route restricted employees but treated every manager-or-higher role as organization-wide. | Added `can_access_request` in `backend/app/services/request_service.py` and enforced it in `backend/app/api/request.py`: own request for any role, same-department employee requests for managers, organization-wide for executives/admins. | HTTP regression covers employee own/cross, manager own/same/cross, executive, and admin responses. | Department membership still depends on authoritative and current `users.department_id` data. |
+| RAG no-match coupled to DMN escalation | **Confirmed** | `retrieve_policy` mapped empty results to `policy_unavailable`; DMN treated that flag as an authoritative failure. | Added `backend/app/services/policy_retrieval.py`; graph retrieval now returns typed outcomes and DMN no longer reads retrieval state. Audit details record the outcome. | Tests cover `MATCH`, `NO_MATCH`, `DEGRADED`, `ERROR`; valid requests still follow deterministic approval rules under no-match and provider error. | A workflow-level failure outside the adapter still routes through the existing fail-closed workflow path. Real semantic embeddings remain untested. |
+| Employee evidence response/viewer contract | **Confirmed** | `SOPRequest` stored evidence fields, but response schemas dropped them; My Requests used `size` and a direct protected URL without bearer authentication. | Added typed `EvidenceMetadata`, `has_evidence`, and `evidence_list` to request response/list schemas; employee viewer uses `size_bytes` and authenticated blob fetching. | Python serialization assertion plus Node authenticated-fetch/render tests pass; existing evidence authorization tests remain green. | Local file storage durability, malware scanning, OCR, and authenticity verification remain outside Phase 1. |
+
+Dependency review: the DMN imports neither the retrieval adapter nor retrieval status. The workflow depends only on the adapter contract and generic chunks/status. Replacing MongoDB/Python scoring with another vector implementation requires an adapter implementation change, not DMN or workflow rule changes.
+
+## N. Remaining Known Issues
 
 1. Real MongoDB persistence, indexes/concurrency under multiple app workers, and deployment integration still need verification once the configured database is reachable. No application database was modified by the test harness.
 2. Historical invalid awaiting_evidence request records require the supplied explicit migration before rollout. The current database could not be inspected or migrated.
 3. Real semantic embedding success and the actual deployed policy corpus were not exercised. Keyword retrieval is intentionally limited; legacy chunks need re-ingestion to gain trusted embedding metadata.
-4. Independent human/browser red-team testing is pending. The development interpreter is deliberately limited; language-provider outages return retry rather than claiming equivalent offline understanding. Some evidence replies remain repetitive.
+4. Independent human/browser red-team testing is pending. The development interpreter is deliberately limited; its diagnostic passed 29/30 and missed “doctor's appointment” as a reason. Language-provider outages return retry rather than claiming equivalent offline understanding. Some evidence replies remain repetitive.
 5. UI navigation/reload starts a fresh conversation; there is no draft restoration/retention interface. Saved IDs remain server-owned. Chat does not revise finalized requests.
 6. Filesystem, MongoDB and audit writes are not one transaction. Crash recovery is triggered by a later conversation turn, not a background worker. Local upload storage must be persistent on the deployment host.
 7. USD is the implemented reimbursement-policy currency; inclusive calendar days are used for leave. Arbitrary date phrases can require clarification. No holiday calendar, OCR, authenticity verification or new HR incident classifier was added.
 8. Dependency manifests have pre-existing version differences. Tests used the installed environment, not a fresh production image. Production readiness is not claimed.
 
-## N. Demo Readiness
+## O. Demo Readiness
 
 READY WITH KNOWN LIMITATIONS
 

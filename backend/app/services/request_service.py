@@ -100,6 +100,22 @@ async def get_request_by_id(
     return SOPRequest(**doc)
 
 
+async def can_access_request(
+    db: AsyncIOMotorDatabase,
+    sop_request: SOPRequest,
+    user: User,
+) -> bool:
+    """Apply the direct request-read scope for the authenticated user."""
+    if str(sop_request.employee_id) == str(user.id):
+        return True
+    if user.role.value in {"executive", "admin"}:
+        return True
+    if user.role.value != "manager" or not user.department_id:
+        return False
+    owner = await db.users.find_one({"id": str(sop_request.employee_id)})
+    return bool(owner and owner.get("department_id") == user.department_id)
+
+
 async def get_employee_requests(
     db: AsyncIOMotorDatabase,
     employee_id: uuid.UUID | str,

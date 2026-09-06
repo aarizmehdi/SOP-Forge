@@ -32,7 +32,7 @@ const ChatAssistant = (() => {
                                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
                             </svg>
                         </div>
-                        <h1 class="ca-hero-title">Good ${getGreeting()}, ${firstName}</h1>
+                        <h1 class="ca-hero-title">Good ${getGreeting()}, ${escapeHtml(firstName)}</h1>
                         <p class="ca-hero-subtitle">How can I help you today?</p>
 
                         <p class="ca-hero-subtitle">Ask about leave, expenses, system access, or company policies.</p>
@@ -106,9 +106,9 @@ const ChatAssistant = (() => {
         const userRow = document.createElement('div');
         userRow.className = 'ca-msg ca-msg-user';
         userRow.innerHTML = `
-            <div class="ca-msg-avatar ca-avatar-user">${Auth.getInitials(user.name)}</div>
+            <div class="ca-msg-avatar ca-avatar-user">${escapeHtml(Auth.getInitials(user.name))}</div>
             <div class="ca-msg-body">
-                <div class="ca-msg-name">${user.name}</div>
+                <div class="ca-msg-name">${escapeHtml(user.name)}</div>
                 <div class="ca-msg-content ca-content-user">${escapeHtml(text)}</div>
             </div>
         `;

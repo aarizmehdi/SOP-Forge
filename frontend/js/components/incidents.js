@@ -26,7 +26,7 @@ const Incidents = (() => {
             renderIncidentsList();
         } catch (err) {
             document.getElementById('incidents-list').innerHTML = `
-                <div class="card"><p style="color:var(--status-escalated)">Error loading incidents: ${err.message}</p></div>
+                <div class="card"><p style="color:var(--status-escalated)">Error loading incidents: ${App.escapeHtml(err.message)}</p></div>
             `;
         }
     }
@@ -55,7 +55,7 @@ const Incidents = (() => {
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:var(--space-md)">
                     <div>
                         <div style="display:flex;align-items:center;gap:var(--space-sm);margin-bottom:6px">
-                            <span style="font-size:var(--text-base);font-weight:600;color:var(--text-primary)">Employee ID: ${inc.employee_id}</span>
+                            <span style="font-size:var(--text-base);font-weight:600;color:var(--text-primary)">Employee ID: ${App.escapeHtml(inc.employee_id)}</span>
                             <span class="badge" style="background-color: ${isOpen ? 'rgba(239, 68, 68, 0.1)' : 'var(--bg-tertiary)'}; color: ${statusColor}">${inc.status.toUpperCase()}</span>
                         </div>
                         <div style="display:flex;align-items:center;gap:var(--space-md);font-size:var(--text-xs);color:var(--text-tertiary)">
@@ -66,13 +66,13 @@ const Incidents = (() => {
 
                 <div style="background:var(--bg-tertiary);border:1px solid var(--border-subtle);border-radius:var(--radius-md);padding:var(--space-md);margin-bottom:var(--space-md)">
                     <div style="font-size:11px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">User Message</div>
-                    <div style="font-family:var(--font-mono);font-size:var(--text-sm);color:var(--text-primary);white-space:pre-wrap;">${escapeHtml(inc.message)}</div>
+                    <div style="font-family:var(--font-mono);font-size:var(--text-sm);color:var(--text-primary);white-space:pre-wrap;">${App.escapeHtml(inc.message)}</div>
                 </div>
 
                 ${inc.ai_reasoning ? `
                     <div style="margin-bottom:var(--space-md)">
                         <div style="font-size:11px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">AI Reasoning</div>
-                        <div class="reasoning-box">${escapeHtml(inc.ai_reasoning)}</div>
+                        <div class="reasoning-box">${App.escapeHtml(inc.ai_reasoning)}</div>
                     </div>
                 ` : ''}
 
@@ -99,16 +99,6 @@ const Incidents = (() => {
         } catch (err) {
             App.toast(`Error: ${err.message}`, 'error');
         }
-    }
-
-    function escapeHtml(unsafe) {
-        if (!unsafe) return '';
-        return unsafe
-             .replace(/&/g, "&amp;")
-             .replace(/</g, "&lt;")
-             .replace(/>/g, "&gt;")
-             .replace(/"/g, "&quot;")
-             .replace(/'/g, "&#039;");
     }
 
     return { render, dismiss };

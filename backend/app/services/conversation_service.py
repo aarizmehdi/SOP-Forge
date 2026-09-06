@@ -273,13 +273,15 @@ async def handle_message(db, employee, payload, *, attachment_ready=False):
             except Exception:
                 policy_message = "I couldn't retrieve your leave balance. Please try again."
         else:
-            from app.services.sop_service import search_policy
-            try:
-                chunks = await search_policy(db, message, top_k=2)
-                policy_message = "\n\n".join(f"{c['ref']}: {c['chunk_text']}" for c in chunks) if chunks else "I couldn't find a matching company policy. Please check with your manager."
-                retrieval_mode = chunks[0]["retrieval_mode"] if chunks else "no_match"
-            except Exception:
-                policy_message, retrieval_mode = "Policy guidance is unavailable. Please try again or check with your manager.", "unavailable"
+            from app.services.policy_retrieval import PolicyRetrievalStatus, get_policy_retrieval_adapter
+            retrieval = await get_policy_retrieval_adapter().retrieve(db, message, top_k=2)
+            retrieval_mode = retrieval.status.value
+            if retrieval.status in {PolicyRetrievalStatus.MATCH, PolicyRetrievalStatus.DEGRADED}:
+                policy_message = "\n\n".join(f"{c['ref']}: {c['chunk_text']}" for c in retrieval.chunks)
+            elif retrieval.status == PolicyRetrievalStatus.NO_MATCH:
+                policy_message = "I couldn't find a matching company policy. Please check with your manager."
+            else:
+                policy_message = "Policy guidance is unavailable. Please try again or check with your manager."
         if candidate.intent == "policy":
             return response(draft, policy_message, response_type="policy_info", retrieval_mode=retrieval_mode)
     merge_candidates(draft, candidate, message)

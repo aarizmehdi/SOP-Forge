@@ -91,7 +91,7 @@ const Dashboard = (() => {
             document.getElementById('exec-stats-grid').innerHTML = `
                 <div class="card stat-card">
                     <p style="color:var(--status-escalated);font-size:var(--text-sm)">
-                        Unable to load executive metrics. ${err.message}
+                        Unable to load executive metrics. ${App.escapeHtml(err.message)}
                     </p>
                 </div>
             `;
@@ -176,20 +176,20 @@ const Dashboard = (() => {
                     </td>
                     <td style="padding: 16px;">
                         <span style="display:inline-flex; align-items:center; color:${actionColor}; font-weight:600; font-size:12px; background:${bgColor}; padding: 6px 12px; border-radius: 6px; letter-spacing:0.5px; text-transform:uppercase;">
-                            ${log.event_type.replace(/_/g, ' ')}
+                            ${App.escapeHtml(log.event_type.replace(/_/g, ' '))}
                         </span>
                     </td>
                     <td style="padding: 16px;">
                         <div style="font-size:var(--text-base); font-weight:500; color:var(--text-primary); margin-bottom:2px;">
-                            ${log.actor_name || 'AI Engine'}
+                            ${App.escapeHtml(log.actor_name || 'AI Engine')}
                         </div>
                         <div style="font-size:12px; color:var(--text-tertiary); font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">
-                            ${log.actor_role || 'System'}
+                            ${App.escapeHtml(log.actor_role || 'System')}
                         </div>
                     </td>
                     <td style="padding: 16px; font-size:var(--text-sm); color:var(--text-secondary); max-width:250px;">
                         <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-                            ${log.evaluation_reasoning || 'No details provided'}
+                            ${App.escapeHtml(log.evaluation_reasoning || 'No details provided')}
                         </div>
                     </td>
                 </tr>
@@ -225,7 +225,7 @@ const Dashboard = (() => {
                 <div style="display:flex;justify-content:space-between;align-items:flex-end">
                     <div>
                         <h1 class="page-title">Team Action Center</h1>
-                        <p class="page-subtitle">Welcome back, ${user.name.split(' ')[0]}. Here is what needs your attention today.</p>
+                        <p class="page-subtitle">Welcome back, ${App.escapeHtml(user.name.split(' ')[0])}. Here is what needs your attention today.</p>
                     </div>
                 </div>
             </div>
@@ -287,7 +287,7 @@ const Dashboard = (() => {
             renderManagerActionTable(pendingReviews);
         } catch (err) {
             document.getElementById('dashboard-stats').innerHTML = `
-                <div class="card stat-card"><p style="color:var(--status-escalated);">Unable to load data. ${err.message}</p></div>
+                <div class="card stat-card"><p style="color:var(--status-escalated);">Unable to load data. ${App.escapeHtml(err.message)}</p></div>
             `;
         }
     }
@@ -349,11 +349,11 @@ const Dashboard = (() => {
             return `
                 <tr class="table-row-hover" onclick="window.location.hash='#/review'" style="cursor:pointer;">
                     <td>
-                        <div style="font-weight:500">${req.employee_name}</div>
+                        <div style="font-weight:500">${App.escapeHtml(req.employee_name)}</div>
                         <div style="font-size:var(--text-xs);color:var(--text-tertiary)">${date}</div>
                     </td>
                     <td>
-                        <span style="text-transform:capitalize">${type}</span>
+                        <span style="text-transform:capitalize">${App.escapeHtml(type)}</span>
                     </td>
                     <td>
                         <span class="status-badge" style="background: ${urgency === 'critical' ? 'var(--status-escalated)' : '#3b82f6'}; color: white; opacity: 0.9; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">

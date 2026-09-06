@@ -66,6 +66,7 @@ async def audit_log(state: RequestState) -> dict:
             details={
                 "request_type": state.get("request_type", "unknown"),
                 "employee_code": state.get("employee_code", "unknown"),
+                "retrieval_status": state.get("retrieval_status"),
                 "sla_deadline": state.get("sla_deadline"),
                 "override_count": len(state.get("override_log", [])),
             },

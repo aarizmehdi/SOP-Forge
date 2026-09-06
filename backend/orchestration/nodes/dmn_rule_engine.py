@@ -30,9 +30,9 @@ async def dmn_rule_engine(state: RequestState) -> dict:
     except (ValueError, TypeError):
         return {"dmn_result": False, "decision": "routed", "status": "escalated",
                 "evaluation_reasoning": "Request data is invalid or incoherent; human review required."}
-    if live_data.get("hrms_error") or not live_data.get("employee_profile", {}).get("found") or state.get("policy_unavailable") or state.get("error"):
+    if live_data.get("hrms_error") or not live_data.get("employee_profile", {}).get("found") or state.get("error"):
         return {"dmn_result": False, "decision": "routed", "status": "escalated",
-                "evaluation_reasoning": "Authoritative HRMS or policy guidance unavailable; human review required."}
+                "evaluation_reasoning": "Authoritative HRMS data or workflow state is unavailable; human review required."}
 
     # P0-2: Trusted Request Type (State request_type is authoritative, NOT LLM intent)
     trusted_request_type = state.get("request_type", "leave").lower()

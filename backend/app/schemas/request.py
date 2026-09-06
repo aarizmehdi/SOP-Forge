@@ -66,6 +66,15 @@ class OverrideEntry(BaseModel):
     ts: str
 
 
+class EvidenceMetadata(BaseModel):
+    """Safe attachment metadata exposed through request responses."""
+    id: UUID
+    original_filename: str
+    content_type: str
+    size_bytes: int = Field(..., ge=0)
+    uploaded_at: datetime
+
+
 class RequestResponse(BaseModel):
     """Full request response with AI evaluation results."""
     id: UUID
@@ -79,6 +88,8 @@ class RequestResponse(BaseModel):
     status: RequestStatus
     sla_deadline: datetime | None
     override_log: list[dict] | None
+    has_evidence: bool
+    evidence_list: list[EvidenceMetadata]
     created_at: datetime
     updated_at: datetime
 
@@ -92,6 +103,8 @@ class RequestListItem(BaseModel):
     decision: Decision
     status: RequestStatus
     confidence: float | None
+    has_evidence: bool
+    evidence_list: list[EvidenceMetadata]
     created_at: datetime
 
     model_config = {"from_attributes": True}

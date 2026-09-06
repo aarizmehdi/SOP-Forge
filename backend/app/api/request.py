@@ -23,6 +23,7 @@ from app.schemas.request import (
     RequestSubmission,
 )
 from app.services.request_service import (
+    can_access_request,
     get_employee_requests,
     get_request_by_id,
     submit_request,
@@ -179,11 +180,11 @@ async def get_request(
     if sop_request is None:
         raise HTTPException(status_code=404, detail="Request not found")
 
-    # Employees can only see their own requests (unless manager+)
+    if not await can_access_request(db, sop_request, current_user):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    # Employees receive the public lifecycle result without internal evaluation data.
     if current_user.role.value == "employee":
-        if sop_request.employee_id != current_user.id:
-            raise HTTPException(status_code=403, detail="Access denied")
-        
         # Sanitize internal AI reasoning for employees to prevent leaking flags/policies
         sop_request.evaluation_reasoning = None
         sop_request.confidence = None

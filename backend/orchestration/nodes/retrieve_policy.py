@@ -39,46 +39,37 @@ async def retrieve_policy(state: RequestState) -> dict:
     query = " ".join(query_parts)
     logger.info(f"Retrieve Policy: Searching for: {query[:100]}...")
 
-    policy_unavailable = False
-    # Perform vector search
+    from app.database import get_mongodb_client
+    from app.services.policy_retrieval import PolicyRetrievalStatus, get_policy_retrieval_adapter
+
+    client = get_mongodb_client()
     try:
-        from app.services.sop_service import search_policy
-        from app.database import get_mongodb_client
+        db = client.get_default_database()
+    except Exception:
+        db = client["sopforge"]
 
-        client = get_mongodb_client()
-        try:
-            db = client.get_default_database()
-        except Exception:
-            db = client["sopforge"]
-
-        results = await search_policy(
-            db,
-            query=query,
-            top_k=5,
-            category=request_type if request_type != "other" else None,
-        )
-
-        if results:
-            policy_refs = [r["ref"] for r in results]
-            policy_text = "\n\n---\n\n".join(
-                f"[{r['ref']}] (similarity: {r['similarity_score']:.2f})\n{r['chunk_text']}"
-                for r in results
-            )
-            logger.info(f"Retrieve Policy: Found {len(results)} relevant policy chunks")
-        else:
-            policy_unavailable = True
-            policy_refs = ["No specific policy found"]
-            policy_text = "No specific SOP policy found for this request type. Exercise caution and recommend escalation."
-            logger.warning("Retrieve Policy: No policy chunks found")
-
-    except Exception as e:
-        logger.error(f"Retrieve Policy: Vector search failed: {e}")
-        policy_unavailable = True
-        policy_refs = []
-        policy_text = "Policy retrieval unavailable; human review required."
+    result = await get_policy_retrieval_adapter().retrieve(
+        db,
+        query,
+        top_k=5,
+        category=request_type if request_type != "other" else None,
+    )
+    policy_refs = [item["ref"] for item in result.chunks]
+    policy_text = "\n\n---\n\n".join(
+        f"[{item['ref']}] (similarity: {item['similarity_score']:.2f})\n{item['chunk_text']}"
+        for item in result.chunks
+    )
+    if result.status == PolicyRetrievalStatus.NO_MATCH:
+        policy_text = "No matching SOP policy was found for this request."
+        logger.info("Retrieve Policy: No relevant policy chunks found")
+    elif result.status == PolicyRetrievalStatus.ERROR:
+        policy_text = "Policy guidance is temporarily unavailable."
+        logger.warning("Retrieve Policy: Provider returned an error outcome")
+    else:
+        logger.info("Retrieve Policy: Found %s relevant policy chunks (%s)", len(result.chunks), result.status.value)
 
     return {
-        "policy_unavailable": policy_unavailable,
+        "retrieval_status": result.status.value,
         "retrieved_policy_refs": policy_refs,
         "retrieved_policy_text": policy_text,
     }

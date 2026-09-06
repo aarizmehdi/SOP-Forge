@@ -20,12 +20,17 @@ from starlette.datastructures import Headers
 from app.config import get_settings
 from app.models.draft import RequestDraft
 from app.models.request import Decision, RequestStatus, SOPRequest
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.schemas.request import AssistantChatRequest, RequestSubmission
 from app.services.candidate_extraction import Candidates, development_candidates
 from app.services.conversation_service import handle_message, merge_candidates, plan, status_message
 from app.services.normalization import normalize_leave_dates, normalize_submission, today_local
 from app.services.sop_service import search_policy, generate_embeddings
+from app.services.policy_retrieval import (
+    MongoPythonPolicyRetrievalAdapter,
+    PolicyRetrievalResult,
+    PolicyRetrievalStatus,
+)
 from app.integrations.hrms_mock import MockHRMSBridge
 from orchestration.nodes.dmn_rule_engine import dmn_rule_engine
 from tests.fakes import Client, Database
@@ -143,6 +148,7 @@ class RuntimeCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.db.evidence.docs[0]["request_id"], str(result.request_details.id))
         self.assertTrue(self.db.sop_requests.docs[0]["has_evidence"])
         self.assertEqual(self.db.sop_requests.docs[0]["evidence_list"][0]["original_filename"], "proof.pdf")
+        self.assertEqual(result.request_details.evidence_list[0].size_bytes, len(b"%PDF-1.4\ntest attachment"))
 
     async def test_13_cross_department_evidence_denied(self):
         from app.api.evidence import authorize_evidence
@@ -216,6 +222,20 @@ class RuntimeCase(unittest.IsolatedAsyncioTestCase):
                 vectors = await generate_embeddings(["sick leave"])
         self.assertEqual(vectors, [[]])
         self.assertTrue(any("retrieval_mode=degraded_keyword" in line for line in logs.output))
+
+    async def test_typed_policy_retrieval_outcomes(self):
+        adapter = MongoPythonPolicyRetrievalAdapter()
+        degraded = await adapter.retrieve(self.db, "sick leave")
+        self.assertEqual(degraded.status, PolicyRetrievalStatus.DEGRADED)
+        no_match = await adapter.retrieve(self.db, "interplanetary relocation")
+        self.assertEqual(no_match.status, PolicyRetrievalStatus.NO_MATCH)
+        semantic_chunk = {"retrieval_mode": "semantic", "ref": "SOP", "chunk_text": "text", "similarity_score": 0.9}
+        with patch('app.services.sop_service.search_policy', new=AsyncMock(return_value=[semantic_chunk])):
+            matched = await adapter.retrieve(self.db, "query")
+        self.assertEqual(matched.status, PolicyRetrievalStatus.MATCH)
+        with patch('app.services.sop_service.search_policy', new=AsyncMock(side_effect=RuntimeError("offline"))):
+            failed = await adapter.retrieve(self.db, "query")
+        self.assertEqual(failed.status, PolicyRetrievalStatus.ERROR)
 
     async def test_25_normal_engineering_no_overlap(self):
         hrms = MockHRMSBridge(0)
@@ -319,6 +339,42 @@ class RuntimeCase(unittest.IsolatedAsyncioTestCase):
             saved = await self.db.sop_requests.find_one({"id": good.json()["id"]})
             self.assertIn(saved["status"], {"resolved", "escalated"})
 
+    async def test_direct_request_read_authorization_matrix(self):
+        from app.main import create_app
+        from app.database import get_db
+        from app.auth.rbac import require_employee
+
+        cross_employee = self.employee.model_copy(update={"id": str(uuid4()), "employee_id": "EMP002", "department_id": "marketing"})
+        manager = self.employee.model_copy(update={"id": str(uuid4()), "employee_id": "MGR001", "role": UserRole.MANAGER})
+        cross_manager = manager.model_copy(update={"id": str(uuid4()), "employee_id": "MGR002", "department_id": "marketing"})
+        executive = manager.model_copy(update={"id": str(uuid4()), "employee_id": "EXEC001", "role": UserRole.EXECUTIVE, "department_id": None})
+        admin = executive.model_copy(update={"id": str(uuid4()), "employee_id": "ADM001", "role": UserRole.ADMIN})
+        await self.db.users.insert_one(cross_employee.model_dump(mode="json"))
+        owner_request = SOPRequest(employee_id=self.employee.id, request_type="leave")
+        cross_request = SOPRequest(employee_id=cross_employee.id, request_type="leave")
+        manager_request = SOPRequest(employee_id=manager.id, request_type="leave")
+        for item in (owner_request, cross_request, manager_request):
+            await self.db.sop_requests.insert_one(item.model_dump(mode="json"))
+
+        actor = {"user": self.employee}
+        app = create_app()
+        app.dependency_overrides[get_db] = lambda: self.db
+        app.dependency_overrides[require_employee] = lambda: actor["user"]
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+            actor["user"] = self.employee
+            self.assertEqual((await client.get(f"/api/request/{owner_request.id}")).status_code, 200)
+            self.assertEqual((await client.get(f"/api/request/{cross_request.id}")).status_code, 403)
+            actor["user"] = manager
+            self.assertEqual((await client.get(f"/api/request/{owner_request.id}")).status_code, 200)
+            self.assertEqual((await client.get(f"/api/request/{cross_request.id}")).status_code, 403)
+            self.assertEqual((await client.get(f"/api/request/{manager_request.id}")).status_code, 200)
+            actor["user"] = cross_manager
+            self.assertEqual((await client.get(f"/api/request/{cross_request.id}")).status_code, 200)
+            actor["user"] = executive
+            self.assertEqual((await client.get(f"/api/request/{cross_request.id}")).status_code, 200)
+            actor["user"] = admin
+            self.assertEqual((await client.get(f"/api/request/{cross_request.id}")).status_code, 200)
+
 
     async def test_concurrent_turns_compare_and_set(self):
         await self.say("I need leave")
@@ -337,10 +393,18 @@ class RuntimeCase(unittest.IsolatedAsyncioTestCase):
             result = await self.say("I need annual leave just tomorrow for vacation")
         self.assertEqual(result.request_details.decision, Decision.ROUTED)
 
-    async def test_rag_failure_cannot_approve(self):
+    async def test_policy_provider_failure_does_not_control_dmn(self):
         with patch('app.services.sop_service.search_policy', new=AsyncMock(side_effect=RuntimeError("offline"))):
             result = await self.say("I need annual leave just tomorrow for vacation")
-        self.assertEqual(result.request_details.decision, Decision.ROUTED)
+        self.assertEqual(result.request_details.decision, Decision.APPROVED)
+
+    async def test_policy_no_match_does_not_control_dmn(self):
+        adapter = AsyncMock()
+        adapter.retrieve.return_value = PolicyRetrievalResult(PolicyRetrievalStatus.NO_MATCH)
+        with patch('app.services.policy_retrieval.get_policy_retrieval_adapter', return_value=adapter):
+            result = await self.say("I need annual leave just tomorrow for vacation")
+        self.assertEqual(result.request_details.decision, Decision.APPROVED)
+        self.assertIn("no_match", [entry.get("details", {}).get("retrieval_status") for entry in self.db.audit_logs.docs])
 
     async def test_workflow_failure_is_audited_and_private(self):
         with patch('orchestration.graph.run_request_workflow', new=AsyncMock(side_effect=RuntimeError("PRIVATE trace"))):

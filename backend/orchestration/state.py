@@ -32,6 +32,7 @@ class RequestState(TypedDict, total=False):
     # ── RAG Retrieval ──
     retrieved_policy_refs: list[str]
     retrieved_policy_text: str  # Full retrieved policy context
+    retrieval_status: str  # match | no_match | degraded | error
 
     # ── AI Evaluation ──
     decision: str  # approved | rejected | routed | pending
@@ -39,7 +40,6 @@ class RequestState(TypedDict, total=False):
     evaluation_reasoning: str
     extracted_variables: dict
     evidence_present: bool
-    policy_unavailable: bool
     dmn_result: bool
 
     # ── Lifecycle ──
