@@ -1433,6 +1433,45 @@ code {
 .ca-send-btn.is-recording { background: rgba(239, 68, 68, 0.15) !important; animation: pulse-red 2s infinite; }
 .ca-send-btn.is-recording svg { stroke: #ef4444 !important; }
 
+.ca-transaction-bar,
+.ca-terminal-bar {
+    width: 100%;
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 16px 0 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.ca-action-status {
+    flex-basis: 100%;
+    min-height: 20px;
+    text-align: center;
+    color: #a1a1aa;
+    font-size: 12px;
+}
+
+.ca-terminal-bar {
+    justify-content: space-between;
+    padding: 16px 18px;
+    margin-bottom: 24px;
+    background: #121215;
+    border: 1px solid rgba(16,185,129,0.2);
+    border-radius: 12px;
+}
+
+.ca-terminal-title {
+    color: #f4f4f5;
+}
+
+.ca-terminal-actions {
+    display: flex;
+    gap: 8px;
+}
+
 /* Skeletons */
 @keyframes shimmer {
     0% { background-position: -200% 0; }

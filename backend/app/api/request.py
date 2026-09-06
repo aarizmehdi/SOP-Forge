@@ -17,6 +17,7 @@ from app.models.user import User
 from app.schemas.request import (
     AssistantChatRequest,
     AssistantChatResponse,
+    ConversationStartRequest,
     RequestListItem,
     RequestResponse,
     RequestStatusResponse,
@@ -201,3 +202,13 @@ async def chat_assistant(
 ):
     from app.services.conversation_service import handle_message
     return await handle_message(db, current_user, payload)
+
+
+@router.post("/assistant/start", response_model=AssistantChatResponse, status_code=status.HTTP_201_CREATED)
+async def start_assistant_conversation(
+    payload: ConversationStartRequest,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: User = Depends(require_employee),
+):
+    from app.services.conversation_service import start_conversation
+    return await start_conversation(db, current_user, payload.domain)

@@ -5,7 +5,17 @@ Dedicated table for flagged/inappropriate chats requiring HR review.
 
 import uuid
 from datetime import datetime, timezone
+from enum import Enum
+from typing import Literal
 from pydantic import BaseModel, Field
+
+
+class IncidentType(str, Enum):
+    POLICY_BYPASS = "policy_bypass_attempt"
+    AUTHORITY_IMPERSONATION = "authority_impersonation"
+    FRAUDULENT_AUTHORITY_CLAIM = "fraudulent_authoritative_claim"
+    SECURITY_CONTROL_MANIPULATION = "security_control_manipulation"
+    SERIOUS_THREAT_HARASSMENT = "serious_threat_or_harassment"
 
 class HRIncident(BaseModel):
     """
@@ -15,9 +25,11 @@ class HRIncident(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     employee_id: str
     
-    incident_type: str  # e.g., 'inappropriate_chat'
+    incident_type: IncidentType
     message: str        # The exact message the user typed
     ai_reasoning: str | None = None
-    status: str = "open" # 'open' or 'reviewed'
+    status: Literal["open", "reviewed"] = "open"
+    confidence: float = Field(default=1.0, ge=0, le=1)
+    conversation_id: str | None = None
     
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

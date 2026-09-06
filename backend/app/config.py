@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     organization_timezone: str = "Asia/Karachi"
     sick_evidence_threshold_days: int = Field(default=3, ge=1)
     confidence_threshold: float = 0.85
+    category_inference_confidence_threshold: float = Field(default=0.85, ge=0, le=1)
+    incident_confidence_threshold: float = Field(default=0.85, ge=0, le=1)
+    conversation_history_turns: int = Field(default=12, ge=4, le=30)
     sla_default_hours: int = 2
 
     # ── Embedding ──

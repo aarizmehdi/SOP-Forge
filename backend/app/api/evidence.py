@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 from app.auth.jwt import get_current_user
+from app.auth.rbac import require_employee
 from app.database import get_db
 from app.models.audit import AuditEventType
 from app.models.draft import DraftState
@@ -73,21 +74,34 @@ def public_metadata(entry):
 
 @router.post("/draft/{conversation_id}")
 async def upload_draft_evidence(conversation_id: str, file: UploadFile = File(...),
-                                db=Depends(get_db), current_user: User = Depends(get_current_user)):
-    from app.services.conversation_service import load_draft, save_draft, handle_message
-    from app.schemas.request import AssistantChatRequest
+                                db=Depends(get_db), current_user: User = Depends(require_employee)):
+    from app.services.conversation_service import load_draft, save_draft, finalize_draft
     draft = await load_draft(db, conversation_id, current_user.id)
-    if draft.state != DraftState.AWAITING_EVIDENCE or draft.evidence_choice != "upload":
+    if draft.state != DraftState.AWAITING_EVIDENCE:
         raise HTTPException(409, "This conversation is not waiting for an attachment.")
-    draft.state = DraftState.ATTACHING_EVIDENCE
+    draft.state, draft.evidence_choice = DraftState.ATTACHING_EVIDENCE, "upload"
     await save_draft(db, draft)
     try:
         await store_file(db, file, current_user, draft_id=draft.id)
-    finally:
+    except Exception:
         draft.state = DraftState.AWAITING_EVIDENCE
+        draft.evidence_choice = "undecided"
         await save_draft(db, draft)
-    return await handle_message(db, current_user, AssistantChatRequest(
-        message="The attachment has been uploaded.", conversation_id=draft.id), attachment_ready=True)
+        raise
+    if not await db.evidence.find_one({"draft_id": draft.id}):
+        draft.state = DraftState.AWAITING_EVIDENCE
+        draft.evidence_choice = "undecided"
+        await save_draft(db, draft)
+        raise HTTPException(409, "The uploaded evidence could not be confirmed. Please retry.")
+    draft.evidence_present = True
+    return await finalize_draft(db, current_user, draft)
+
+
+@router.post("/draft/{conversation_id}/skip")
+async def skip_draft_evidence(conversation_id: str, db=Depends(get_db),
+                              current_user: User = Depends(require_employee)):
+    from app.services.conversation_service import skip_evidence
+    return await skip_evidence(db, current_user, conversation_id)
 
 
 @router.post("/upload/{request_id}")
