@@ -41,7 +41,7 @@ const MyRequests = (() => {
             renderList(container, requests);
         } catch (err) {
             container.innerHTML = `
-                <div class="card"><p style="color:var(--text-secondary)">Error loading requests: ${err.message}</p></div>
+                <div class="card"><p style="color:var(--text-secondary)">Error loading requests: ${App.escapeHtml(err.message)}</p></div>
             `;
         }
     }
@@ -91,13 +91,13 @@ const MyRequests = (() => {
     }
 
     function getStatusInfo(status, decision) {
-        if (status === 'resolved' && decision === 'approved') {
+        if (['resolved', 'overridden'].includes(status) && decision === 'approved') {
             return { label: 'Approved', badge: 'approved', icon: '✅', bg: 'rgba(16,185,129,0.1)', border: 'rgba(16,185,129,0.2)' };
         }
-        if (status === 'resolved' && decision === 'rejected') {
+        if (['resolved', 'overridden'].includes(status) && decision === 'rejected') {
             return { label: 'Declined', badge: 'rejected', icon: '❌', bg: 'rgba(239,68,68,0.1)', border: 'rgba(239,68,68,0.2)' };
         }
-        if (status === 'escalated' || status === 'routed') {
+        if (status === 'escalated' || decision === 'routed') {
             return { label: 'Under Review', badge: 'escalated', icon: '⏳', bg: 'rgba(245,158,11,0.1)', border: 'rgba(245,158,11,0.2)' };
         }
         if (status === 'in_progress') {
@@ -108,7 +108,7 @@ const MyRequests = (() => {
 
     function getTypeLabel(type) {
         const labels = { leave: 'Leave Application', reimbursement: 'Expense Reimbursement', it_access: 'IT Access Request' };
-        return labels[type] || type;
+        return labels[type] || App.escapeHtml(type);
     }
 
     async function viewDetail(requestId) {
@@ -130,26 +130,26 @@ const MyRequests = (() => {
             if (req.request_type === 'leave') {
                 detailsHtml = `
                     <div class="detail-grid" style="margin-bottom:var(--space-md)">
-                        ${d.leave_type ? `<div class="detail-item"><span class="detail-label">Leave Type</span><span class="detail-value">${d.leave_type.charAt(0).toUpperCase() + d.leave_type.slice(1)}</span></div>` : ''}
+                        ${d.leave_type ? `<div class="detail-item"><span class="detail-label">Leave Type</span><span class="detail-value">${App.escapeHtml(d.leave_type.charAt(0).toUpperCase() + d.leave_type.slice(1))}</span></div>` : ''}
                         ${d.start_date ? `<div class="detail-item"><span class="detail-label">From</span><span class="detail-value">${new Date(d.start_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</span></div>` : ''}
                         ${d.end_date ? `<div class="detail-item"><span class="detail-label">To</span><span class="detail-value">${new Date(d.end_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</span></div>` : ''}
-                        ${d.reason ? `<div class="detail-item" style="grid-column:1/-1"><span class="detail-label">Reason</span><span class="detail-value">${d.reason}</span></div>` : ''}
+                        ${d.reason ? `<div class="detail-item" style="grid-column:1/-1"><span class="detail-label">Reason</span><span class="detail-value">${App.escapeHtml(d.reason)}</span></div>` : ''}
                     </div>
                 `;
             } else if (req.request_type === 'reimbursement') {
                 detailsHtml = `
                     <div class="detail-grid" style="margin-bottom:var(--space-md)">
-                        ${d.category ? `<div class="detail-item"><span class="detail-label">Category</span><span class="detail-value">${d.category}</span></div>` : ''}
+                        ${d.category ? `<div class="detail-item"><span class="detail-label">Category</span><span class="detail-value">${App.escapeHtml(d.category)}</span></div>` : ''}
                         ${d.amount ? `<div class="detail-item"><span class="detail-label">Amount</span><span class="detail-value">$${d.amount.toFixed(2)}</span></div>` : ''}
-                        ${d.description ? `<div class="detail-item" style="grid-column:1/-1"><span class="detail-label">Description</span><span class="detail-value">${d.description}</span></div>` : ''}
+                        ${d.description ? `<div class="detail-item" style="grid-column:1/-1"><span class="detail-label">Description</span><span class="detail-value">${App.escapeHtml(d.description)}</span></div>` : ''}
                     </div>
                 `;
             } else if (req.request_type === 'it_access') {
                 detailsHtml = `
                     <div class="detail-grid" style="margin-bottom:var(--space-md)">
-                        ${d.system_name ? `<div class="detail-item"><span class="detail-label">System</span><span class="detail-value">${d.system_name}</span></div>` : ''}
-                        ${d.access_level ? `<div class="detail-item"><span class="detail-label">Access Level</span><span class="detail-value">${d.access_level}</span></div>` : ''}
-                        ${d.justification ? `<div class="detail-item" style="grid-column:1/-1"><span class="detail-label">Justification</span><span class="detail-value">${d.justification}</span></div>` : ''}
+                        ${d.system_name ? `<div class="detail-item"><span class="detail-label">System</span><span class="detail-value">${App.escapeHtml(d.system_name)}</span></div>` : ''}
+                        ${d.access_level ? `<div class="detail-item"><span class="detail-label">Access Level</span><span class="detail-value">${App.escapeHtml(d.access_level)}</span></div>` : ''}
+                        ${d.justification ? `<div class="detail-item" style="grid-column:1/-1"><span class="detail-label">Justification</span><span class="detail-value">${App.escapeHtml(d.justification)}</span></div>` : ''}
                     </div>
                 `;
             }
@@ -183,9 +183,9 @@ const MyRequests = (() => {
                         <div style="font-size:11px;font-weight:700;color:var(--primary-400);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">📎 Supporting Evidence Attached</div>
                         <div style="display:flex;flex-wrap:wrap;gap:10px">
                             ${req.evidence_list.map(ev => `
-                                <a href="/api/evidence/file/${ev.id}" target="_blank" class="btn btn-ghost btn-sm" style="background:var(--bg-tertiary);border:1px solid var(--border-subtle);font-size:var(--text-xs);display:inline-flex;align-items:center;gap:6px;color:var(--primary-400)">
-                                    📄 ${ev.original_filename} (${Math.round(ev.size / 1024)} KB)
-                                </a>
+                                <button type="button" onclick="MyRequests.openEvidence('${ev.id}')" class="btn btn-ghost btn-sm" style="background:var(--bg-tertiary);border:1px solid var(--border-subtle);font-size:var(--text-xs);display:inline-flex;align-items:center;gap:6px;color:var(--primary-400)">
+                                    📄 ${App.escapeHtml(ev.original_filename || 'Evidence')} (${Math.round((ev.size_bytes || 0) / 1024)} KB)
+                                </button>
                             `).join('')}
                         </div>
                     </div>
@@ -236,5 +236,28 @@ const MyRequests = (() => {
         }
     }
 
-    return { render, viewDetail, uploadEvidence };
+    async function openEvidence(id) {
+        const viewer = window.open('', '_blank');
+        if (viewer) viewer.opener = null;
+        try {
+            const response = await fetch(`/api/evidence/file/${encodeURIComponent(id)}`, {
+                headers: { Authorization: `Bearer ${Auth.getToken()}` }
+            });
+            if (!response.ok) throw new Error('Evidence is unavailable or access was denied.');
+            const url = URL.createObjectURL(await response.blob());
+            if (viewer) viewer.location.href = url;
+            else {
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = 'evidence';
+                link.click();
+            }
+            setTimeout(() => URL.revokeObjectURL(url), 60000);
+        } catch (error) {
+            if (viewer) viewer.close();
+            App.toast(error.message, 'error');
+        }
+    }
+
+    return { render, viewDetail, uploadEvidence, openEvidence };
 })();

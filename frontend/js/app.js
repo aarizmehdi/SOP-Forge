@@ -110,10 +110,15 @@ const App = (() => {
         const container = document.getElementById('toast-container');
         const toast = document.createElement('div');
         toast.className = `toast toast-${type}`;
-        toast.innerHTML = `
-            <span class="toast-message">${message}</span>
-            <button class="toast-close" onclick="this.parentElement.remove()">✕</button>
-        `;
+        const messageEl = document.createElement('span');
+        messageEl.className = 'toast-message';
+        messageEl.textContent = String(message ?? '');
+        const closeEl = document.createElement('button');
+        closeEl.className = 'toast-close';
+        closeEl.type = 'button';
+        closeEl.textContent = '✕';
+        closeEl.addEventListener('click', () => toast.remove());
+        toast.append(messageEl, closeEl);
         container.appendChild(toast);
 
         // Auto-remove after 5 seconds
@@ -125,7 +130,16 @@ const App = (() => {
         }, 5000);
     }
 
-    return { init, toast };
+    function escapeHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    return { init, toast, escapeHtml };
 })();
 
 // ── Helper: Fill login from demo hint chips ──

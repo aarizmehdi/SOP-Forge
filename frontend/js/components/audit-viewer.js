@@ -97,7 +97,7 @@ const AuditViewer = (() => {
             renderTable(logs);
         } catch (err) {
             document.getElementById('audit-table').innerHTML = `
-                <p style="color:var(--text-secondary);padding:var(--space-lg)">Error loading audit log: ${err.message}</p>
+                <p style="color:var(--text-secondary);padding:var(--space-lg)">Error loading audit log: ${App.escapeHtml(err.message)}</p>
             `;
         }
     }
@@ -174,9 +174,9 @@ const AuditViewer = (() => {
                             
                             return `
                                 <tr onclick="AuditViewer.inspectLog('${log.id}')" style="cursor:pointer">
-                                    <td><span class="badge badge-${eventBadge(log.event_type)}">${log.event_type.replace(/_/g, ' ')}</span></td>
-                                    <td style="font-weight:500;color:var(--text-primary)">${decisionStr}</td>
-                                    <td>${actorLabel}</td>
+                                    <td><span class="badge badge-${eventBadge(log.event_type)}">${App.escapeHtml(log.event_type.replace(/_/g, ' '))}</span></td>
+                                    <td style="font-weight:500;color:var(--text-primary)">${App.escapeHtml(decisionStr)}</td>
+                                    <td>${App.escapeHtml(actorLabel)}</td>
                                     <td class="mono">${new Date(log.created_at).toLocaleString('en-GB')}</td>
                                     <td>
                                         <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();AuditViewer.inspectLog('${log.id}')">
@@ -198,7 +198,7 @@ const AuditViewer = (() => {
             if (!log) return;
 
             const cleanRefs = log.policy_refs && log.policy_refs.length 
-                ? Array.from(new Set(log.policy_refs.map(r => r.replace(/:\s*chunk\s*\d+/gi, '').trim())))
+                ? Array.from(new Set(log.policy_refs.map(r => String(r).replace(/:\s*chunk\s*\d+/gi, '').trim())))
                 : [];
 
             const decisionStr = log.decision ? log.decision.charAt(0).toUpperCase() + log.decision.slice(1) : 'N/A';
@@ -210,7 +210,7 @@ const AuditViewer = (() => {
                     <div class="modal-header" style="border-bottom:1px solid var(--border-subtle);padding-bottom:16px;margin-bottom:20px">
                         <div>
                             <h2 class="modal-title" style="font-size:20px;font-weight:700">Audit Log Record</h2>
-                            <span style="font-size:12px;color:var(--text-tertiary);font-family:var(--font-mono)">ID: ${log.id}</span>
+                            <span style="font-size:12px;color:var(--text-tertiary);font-family:var(--font-mono)">ID: ${App.escapeHtml(log.id)}</span>
                         </div>
                         <button class="btn-icon" onclick="this.closest('.modal-overlay').remove()">✕</button>
                     </div>
@@ -218,15 +218,15 @@ const AuditViewer = (() => {
                     <div class="detail-grid" style="margin-bottom:var(--space-lg);background:var(--bg-tertiary);padding:16px;border-radius:8px">
                         <div class="detail-item">
                             <span class="detail-label">Event Type</span>
-                            <span class="detail-value"><span class="badge badge-${eventBadge(log.event_type)}">${log.event_type.replace(/_/g, ' ')}</span></span>
+                            <span class="detail-value"><span class="badge badge-${eventBadge(log.event_type)}">${App.escapeHtml(log.event_type.replace(/_/g, ' '))}</span></span>
                         </div>
                         <div class="detail-item">
                             <span class="detail-label">Decision Outcome</span>
-                            <span class="detail-value" style="font-weight:600;color:var(--text-primary)">${decisionStr}</span>
+                            <span class="detail-value" style="font-weight:600;color:var(--text-primary)">${App.escapeHtml(decisionStr)}</span>
                         </div>
                         <div class="detail-item">
                             <span class="detail-label">Actor / Role</span>
-                            <span class="detail-value">${log.actor_name ? `${log.actor_name} (${log.actor_role})` : log.actor_role || 'System Agent'}</span>
+                            <span class="detail-value">${App.escapeHtml(log.actor_name ? `${log.actor_name} (${log.actor_role})` : log.actor_role || 'System Agent')}</span>
                         </div>
                         <div class="detail-item">
                             <span class="detail-label">Timestamp</span>
@@ -238,8 +238,8 @@ const AuditViewer = (() => {
                         <div class="detail-section" style="margin-bottom:20px">
                             <h3 style="font-size:12px;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:8px">Executive Override Justification</h3>
                             <div class="reasoning-box" style="border-left:3px solid var(--status-overridden);background:var(--bg-tertiary)">
-                                <strong style="color:var(--text-primary)">Previous Decision:</strong> ${log.previous_decision || 'N/A'}<br>
-                                <strong style="color:var(--text-primary)">Override Reason:</strong> ${log.override_justification}
+                                <strong style="color:var(--text-primary)">Previous Decision:</strong> ${App.escapeHtml(log.previous_decision || 'N/A')}<br>
+                                <strong style="color:var(--text-primary)">Override Reason:</strong> ${App.escapeHtml(log.override_justification)}
                             </div>
                         </div>
                     ` : ''}
@@ -247,20 +247,20 @@ const AuditViewer = (() => {
                     ${log.evaluation_reasoning ? `
                         <div class="detail-section" style="margin-bottom:20px">
                             <h3 style="font-size:12px;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:8px">Evaluation Summary</h3>
-                            <div class="reasoning-box" style="background:var(--bg-tertiary)">${log.evaluation_reasoning}</div>
+                            <div class="reasoning-box" style="background:var(--bg-tertiary)">${App.escapeHtml(log.evaluation_reasoning)}</div>
                         </div>
                     ` : ''}
 
                     ${cleanRefs.length ? `
                         <div class="detail-section" style="margin-bottom:20px">
                             <h3 style="font-size:12px;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:8px">Policy Governance References</h3>
-                            <div>${cleanRefs.map(r => `<span class="policy-ref" style="background:var(--bg-secondary);border:1px solid var(--border-subtle)">${r}</span>`).join('')}</div>
+                            <div>${cleanRefs.map(r => `<span class="policy-ref" style="background:var(--bg-secondary);border:1px solid var(--border-subtle)">${App.escapeHtml(r)}</span>`).join('')}</div>
                         </div>
                     ` : ''}
 
                     <div class="detail-section">
                         <h3 style="font-size:12px;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:8px">Raw Ledger Payload Details</h3>
-                        <pre style="background:var(--bg-secondary);padding:12px;border:1px solid var(--border-subtle);border-radius:6px;font-family:var(--font-mono);font-size:11px;color:var(--text-secondary);overflow-x:auto">${JSON.stringify(log.details || {}, null, 2)}</pre>
+                        <pre style="background:var(--bg-secondary);padding:12px;border:1px solid var(--border-subtle);border-radius:6px;font-family:var(--font-mono);font-size:11px;color:var(--text-secondary);overflow-x:auto">${App.escapeHtml(JSON.stringify(log.details || {}, null, 2))}</pre>
                     </div>
 
                     <div style="display:flex;justify-content:flex-end;margin-top:24px;border-top:1px solid var(--border-subtle);padding-top:16px">

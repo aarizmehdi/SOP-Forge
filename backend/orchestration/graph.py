@@ -15,7 +15,6 @@ from orchestration.edges import check_confidence
 from orchestration.nodes.audit_log import audit_log
 from orchestration.nodes.auto_decide import auto_decide
 from orchestration.nodes.escalate import escalate
-from orchestration.nodes.extract_variables import extract_variables
 from orchestration.nodes.dmn_rule_engine import dmn_rule_engine
 from orchestration.nodes.intake import intake
 from orchestration.nodes.override_check import override_check
@@ -30,7 +29,7 @@ def build_sop_graph() -> StateGraph:
     Build the SOP request evaluation LangGraph workflow.
     
     Graph structure (PRD Section 7):
-        intake → retrieve_policy → extract_variables → dmn_rule_engine → check_confidence (conditional)
+        intake → retrieve_policy → dmn_rule_engine → check_confidence (conditional)
             ├─ auto_decide → audit_log → END
             └─ escalate → override_check → audit_log → END
     """
@@ -39,7 +38,6 @@ def build_sop_graph() -> StateGraph:
     # ── Add Nodes ──
     workflow.add_node("intake", intake)
     workflow.add_node("retrieve_policy", retrieve_policy)
-    workflow.add_node("extract_variables", extract_variables)
     workflow.add_node("dmn_rule_engine", dmn_rule_engine)
     workflow.add_node("auto_decide", auto_decide)
     workflow.add_node("escalate", escalate)
@@ -47,11 +45,10 @@ def build_sop_graph() -> StateGraph:
     workflow.add_node("audit_log", audit_log)
 
     # ── Add Edges ──
-    # Linear path: intake → retrieve_policy → extract_variables → dmn_rule_engine
+    # Both chat and forms are already normalized; there is no second interpretation.
     workflow.set_entry_point("intake")
     workflow.add_edge("intake", "retrieve_policy")
-    workflow.add_edge("retrieve_policy", "extract_variables")
-    workflow.add_edge("extract_variables", "dmn_rule_engine")
+    workflow.add_edge("retrieve_policy", "dmn_rule_engine")
 
     # Conditional edge: dmn_rule_engine → auto_decide OR escalate
     workflow.add_conditional_edges(
@@ -103,6 +100,8 @@ async def run_request_workflow(
     This is the main entry point called by the API when a request is submitted.
     Returns the final state after all nodes have executed.
     """
+    from app.services.normalization import normalize_submission
+    submitted_data = normalize_submission(request_type, submitted_data)
     graph = get_compiled_graph()
 
     initial_state: RequestState = {
@@ -116,7 +115,7 @@ async def run_request_workflow(
         "extracted_variables": {},
         "dmn_result": False,
         "decision": "pending",
-        "confidence": 0.0,
+        "confidence": 1.0,
         "evaluation_reasoning": "",
         "status": "in_progress",
         "sla_deadline": None,
@@ -144,6 +143,6 @@ async def run_request_workflow(
             "status": "escalated",
             "decision": "routed",
             "confidence": 0.0,
-            "evaluation_reasoning": f"Workflow error: {e}. Request escalated for manual review.",
-            "error": str(e),
+            "evaluation_reasoning": "Workflow failed. Request escalated for manual review.",
+            "error": "workflow_failure",
         }

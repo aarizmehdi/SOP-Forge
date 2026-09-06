@@ -6,6 +6,7 @@ Loads all settings from environment variables via pydantic-settings.
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field
 
 
 class Settings(BaseSettings):
@@ -35,6 +36,8 @@ class Settings(BaseSettings):
     jwt_expiry_minutes: int = 480
 
     # ── SOP Engine Config ──
+    organization_timezone: str = "Asia/Karachi"
+    sick_evidence_threshold_days: int = Field(default=3, ge=1)
     confidence_threshold: float = 0.85
     sla_default_hours: int = 2
 

@@ -82,7 +82,7 @@ const ReviewPanel = (() => {
             renderReviewList();
         } catch (err) {
             document.getElementById('review-list').innerHTML = `
-                <div class="card"><p style="color:var(--text-secondary)">Error loading reviews: ${err.message}</p></div>
+                <div class="card"><p style="color:var(--text-secondary)">Error loading reviews: ${App.escapeHtml(err.message)}</p></div>
             `;
         }
     }
@@ -113,13 +113,13 @@ const ReviewPanel = (() => {
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:var(--space-md)">
                     <div>
                         <div style="display:flex;align-items:center;gap:var(--space-sm);margin-bottom:6px">
-                            <span style="font-size:var(--text-base);font-weight:600;color:var(--text-primary)">${req.employee_name}</span>
-                            <span style="font-size:var(--text-xs);color:var(--text-tertiary)">${req.employee_id_code}</span>
+                            <span style="font-size:var(--text-base);font-weight:600;color:var(--text-primary)">${App.escapeHtml(req.employee_name)}</span>
+                            <span style="font-size:var(--text-xs);color:var(--text-tertiary)">${App.escapeHtml(req.employee_id_code)}</span>
                             <span class="badge badge-${req.status}">${formatRequestType(req.request_type)}</span>
                             ${req.ai_decision ? `<span class="badge badge-${req.ai_decision}">${req.ai_decision.toUpperCase()}</span>` : ''}
                         </div>
                         <div style="display:flex;align-items:center;gap:var(--space-md);font-size:var(--text-xs);color:var(--text-tertiary)">
-                            ${req.department ? `<span>📍 ${req.department}</span>` : ''}
+                            ${req.department ? `<span>📍 ${App.escapeHtml(req.department)}</span>` : ''}
                             <span>📅 ${new Date(req.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}, ${new Date(req.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
                         </div>
                     </div>
@@ -157,9 +157,9 @@ const ReviewPanel = (() => {
                         <div style="font-size:11px;font-weight:700;color:var(--primary-400);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">📎 Supporting Evidence</div>
                         <div style="display:flex;flex-wrap:wrap;gap:10px">
                             ${req.evidence_list.map(ev => `
-                                <a href="/api/evidence/file/${ev.id}" target="_blank" class="btn btn-ghost btn-sm" style="background:var(--bg-tertiary);border:1px solid var(--border-subtle);font-size:var(--text-xs);display:inline-flex;align-items:center;gap:6px;color:var(--primary-400)">
-                                    📄 ${ev.original_filename} (${Math.round(ev.size / 1024)} KB)
-                                </a>
+                                <button onclick="ReviewPanel.openEvidence('${ev.id}')" class="btn btn-ghost btn-sm" style="background:var(--bg-tertiary);border:1px solid var(--border-subtle);font-size:var(--text-xs);display:inline-flex;align-items:center;gap:6px;color:var(--primary-400)">
+                                    📄 ${escapeEvidenceName(ev.original_filename || ev.filename || 'Evidence')} (${Math.round((ev.size_bytes || ev.size || 0) / 1024)} KB)
+                                </button>
                             `).join('')}
                         </div>
                     </div>
@@ -170,8 +170,8 @@ const ReviewPanel = (() => {
                     <div style="margin-bottom:var(--space-md);background:rgba(234,179,8,0.06);border:1px solid rgba(234,179,8,0.25);border-radius:var(--radius-md);padding:10px 14px">
                         <div style="font-size:11px;font-weight:700;color:var(--status-overridden);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">⚡ Executive Override Audit</div>
                         <div style="font-size:var(--text-xs);color:var(--text-primary)">
-                            <strong>Overridden By:</strong> ${req.override_log[req.override_log.length - 1].by_name || 'Executive'}<br>
-                            <strong>Justification:</strong> ${req.override_log[req.override_log.length - 1].justification}
+                            <strong>Overridden By:</strong> ${App.escapeHtml(req.override_log[req.override_log.length - 1].by_name || 'Executive')}<br>
+                            <strong>Justification:</strong> ${App.escapeHtml(req.override_log[req.override_log.length - 1].justification)}
                         </div>
                     </div>
                 ` : ''}
@@ -211,7 +211,7 @@ const ReviewPanel = (() => {
 
     function formatRequestType(type) {
         const labels = { leave: 'Leave Request', reimbursement: 'Expense Claim', it_access: 'IT Access' };
-        return labels[type] || type;
+        return labels[type] || App.escapeHtml(type);
     }
 
     function formatRequestDetails(req) {
@@ -236,8 +236,8 @@ const ReviewPanel = (() => {
 
         return items.map(item => `
             <div>
-                <span style="font-size:11px;color:var(--text-tertiary)">${item.label}</span>
-                <div style="font-size:var(--text-xs);color:var(--text-primary);font-weight:500;margin-top:2px">${item.value}</div>
+                <span style="font-size:11px;color:var(--text-tertiary)">${App.escapeHtml(item.label)}</span>
+                <div style="font-size:var(--text-xs);color:var(--text-primary);font-weight:500;margin-top:2px">${App.escapeHtml(item.value)}</div>
             </div>
         `).join('');
     }
@@ -245,17 +245,17 @@ const ReviewPanel = (() => {
     function cleanReasoning(reasoning) {
         if (!reasoning) return '';
         // Strip "Escalated by AI Brain:", "AI Brain:", etc.
-        return reasoning
+        return App.escapeHtml(reasoning
             .replace(/^Escalated by AI Brain:\s*/i, '')
             .replace(/^AI Brain:\s*/i, '')
             .replace(/^Escalated:\s*/i, '')
-            .trim();
+            .trim());
     }
 
     function formatPolicyRefs(refs) {
         if (!refs || !refs.length) return '';
-        const clean = Array.from(new Set(refs.map(r => r.replace(/:\s*chunk\s*\d+/gi, '').trim())));
-        return clean.map(ref => `<span class="policy-ref">${ref}</span>`).join('');
+        const clean = Array.from(new Set(refs.map(r => String(r).replace(/:\s*chunk\s*\d+/gi, '').trim())));
+        return clean.map(ref => `<span class="policy-ref">${App.escapeHtml(ref)}</span>`).join('');
     }
 
     function renderSLATimer(minutes) {
@@ -366,5 +366,32 @@ const ReviewPanel = (() => {
         });
     }
 
-    return { render, switchTab, showDecisionModal, showOverrideModal };
+    function escapeEvidenceName(value) {
+        return App.escapeHtml(value);
+    }
+
+    async function openEvidence(id) {
+        const viewer = window.open('', '_blank');
+        if (viewer) viewer.opener = null;
+        try {
+            const response = await fetch(`/api/evidence/file/${encodeURIComponent(id)}`, {
+                headers: { Authorization: `Bearer ${Auth.getToken()}` }
+            });
+            if (!response.ok) throw new Error('Evidence is unavailable or access was denied.');
+            const url = URL.createObjectURL(await response.blob());
+            if (viewer) viewer.location.href = url;
+            else {
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = 'evidence';
+                link.click();
+            }
+            setTimeout(() => URL.revokeObjectURL(url), 60000);
+        } catch (error) {
+            if (viewer) viewer.close();
+            App.toast(error.message, 'error');
+        }
+    }
+
+    return { render, switchTab, showDecisionModal, showOverrideModal, openEvidence };
 })();

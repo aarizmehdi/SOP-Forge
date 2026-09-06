@@ -63,7 +63,7 @@ const AdminPanel = (() => {
             renderDocList();
         } catch (err) {
             document.getElementById('admin-content').innerHTML = `
-                <div class="card"><p style="color:var(--status-rejected)">Failed to load documents: ${err.message}</p></div>
+                <div class="card"><p style="color:var(--status-rejected)">Failed to load documents: ${App.escapeHtml(err.message)}</p></div>
             `;
         }
     }
@@ -113,14 +113,14 @@ const AdminPanel = (() => {
                                 </span>
                             </div>
 
-                            <h3 style="font-size:18px;font-weight:700;color:var(--text-primary);margin-bottom:8px;line-height:1.3">${doc.title}</h3>
+                            <h3 style="font-size:18px;font-weight:700;color:var(--text-primary);margin-bottom:8px;line-height:1.3">${App.escapeHtml(doc.title)}</h3>
                             
                             <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:24px">
                                 <span style="font-size:11px;font-weight:600;color:var(--text-tertiary);background:var(--bg-tertiary);padding:4px 8px;border-radius:4px;text-transform:uppercase">
-                                    ${doc.category.replace('_', ' ')}
+                                    ${App.escapeHtml(doc.category.replace('_', ' '))}
                                 </span>
                                 <span style="font-size:11px;font-weight:600;color:var(--text-tertiary);background:var(--bg-tertiary);padding:4px 8px;border-radius:4px">
-                                    Version v${doc.version}
+                                    Version v${App.escapeHtml(doc.version)}
                                 </span>
                             </div>
 
@@ -134,7 +134,7 @@ const AdminPanel = (() => {
                             <button onclick="AdminPanel.showEditor('${doc.id}')" style="background:transparent;border:none;border-right:1px solid var(--border-subtle);color:var(--text-primary);font-weight:600;font-size:13px;cursor:pointer;transition:background 0.2s" onmouseover="this.style.background='var(--bg-elevated)'" onmouseout="this.style.background='transparent'">
                                 Configure
                             </button>
-                            <button onclick="AdminPanel.deleteDoc('${doc.id}', '${doc.title.replace(/'/g, "\\'")}')" style="background:transparent;border:none;color:var(--status-rejected);font-weight:600;font-size:13px;cursor:pointer;transition:background 0.2s" onmouseover="this.style.background='rgba(239, 68, 68, 0.1)'" onmouseout="this.style.background='transparent'">
+                            <button onclick="AdminPanel.deleteDoc('${doc.id}')" style="background:transparent;border:none;color:var(--status-rejected);font-weight:600;font-size:13px;cursor:pointer;transition:background 0.2s" onmouseover="this.style.background='rgba(239, 68, 68, 0.1)'" onmouseout="this.style.background='transparent'">
                                 ${doc.is_active ? 'Deactivate' : 'Delete'}
                             </button>
                         </div>
@@ -159,7 +159,7 @@ const AdminPanel = (() => {
                     <div class="form-row" style="margin-bottom:24px">
                         <div class="form-group">
                             <label for="sop-title">Policy Title</label>
-                            <input type="text" id="sop-title" value="${doc ? doc.title : ''}" placeholder="e.g. Remote Work Hardware Policy" required style="font-size:15px;padding:12px;background:var(--bg-tertiary)">
+                            <input type="text" id="sop-title" value="${doc ? App.escapeHtml(doc.title) : ''}" placeholder="e.g. Remote Work Hardware Policy" required style="font-size:15px;padding:12px;background:var(--bg-tertiary)">
                         </div>
                         <div class="form-group">
                             <label for="sop-category">Routing Category</label>
@@ -183,7 +183,7 @@ const AdminPanel = (() => {
                                 <div style="width:10px;height:10px;border-radius:50%;background:#f59e0b"></div>
                                 <div style="width:10px;height:10px;border-radius:50%;background:#10b981"></div>
                             </div>
-                            <textarea id="sop-content" required minlength="50" style="width:100%;min-height:400px;background:transparent;border:none;color:var(--primary-200);font-family:var(--font-mono);font-size:13px;padding:24px;line-height:1.6;resize:vertical;outline:none" placeholder="Paste the raw text of your standard operating procedure here. The AI Brain will automatically chunk, vectorize, and embed this document for retrieval during decision evaluations...">${doc ? doc.content_text : ''}</textarea>
+                            <textarea id="sop-content" required minlength="50" style="width:100%;min-height:400px;background:transparent;border:none;color:var(--primary-200);font-family:var(--font-mono);font-size:13px;padding:24px;line-height:1.6;resize:vertical;outline:none" placeholder="Paste the raw text of your standard operating procedure here. The AI Brain will automatically chunk, vectorize, and embed this document for retrieval during decision evaluations...">${doc ? App.escapeHtml(doc.content_text) : ''}</textarea>
                         </div>
                     </div>
 
@@ -281,7 +281,7 @@ const AdminPanel = (() => {
                                             </span>
                                         </div>
                                     </div>
-                                    <div style="padding:16px;font-size:13px;line-height:1.6;color:var(--text-primary);white-space:pre-wrap;font-family:var(--font-sans)">${chunk.chunk_text}</div>
+                                    <div style="padding:16px;font-size:13px;line-height:1.6;color:var(--text-primary);white-space:pre-wrap;font-family:var(--font-sans)">${App.escapeHtml(chunk.chunk_text)}</div>
                                 </div>
                             `).join('')}
                         </div>
@@ -298,7 +298,8 @@ const AdminPanel = (() => {
         }
     }
 
-    async function deleteDoc(docId, title) {
+    async function deleteDoc(docId) {
+        const title = documents.find(doc => doc.id === docId)?.title || 'this policy';
         if (!confirm(`Are you sure you want to deactivate "${title}"?\nThe AI Brain will immediately stop retrieving policies from this document during evaluations.`)) return;
         try {
             await API.deleteSOPDoc(docId);

@@ -18,7 +18,7 @@ class RequestState(TypedDict, total=False):
     
     Extended with:
     - live_data: fetched from HRMS bridge
-    - evaluation_reasoning: LLM's chain-of-thought explanation
+    - evaluation_reasoning: concise deterministic evaluation reasons
     - error: any error encountered during processing
     """
 
@@ -32,12 +32,14 @@ class RequestState(TypedDict, total=False):
     # ── RAG Retrieval ──
     retrieved_policy_refs: list[str]
     retrieved_policy_text: str  # Full retrieved policy context
+    retrieval_status: str  # match | no_match | degraded | error
 
     # ── AI Evaluation ──
     decision: str  # approved | rejected | routed | pending
     confidence: float
     evaluation_reasoning: str
     extracted_variables: dict
+    evidence_present: bool
     dmn_result: bool
 
     # ── Lifecycle ──

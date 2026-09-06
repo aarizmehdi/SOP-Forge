@@ -24,6 +24,16 @@ async def dmn_rule_engine(state: RequestState) -> dict:
     submitted_data = state.get("submitted_data", {})
     live_data = state.get("live_data", {})
 
+    from app.services.normalization import normalize_submission
+    try:
+        submitted_data = normalize_submission(state.get("request_type"), submitted_data)
+    except (ValueError, TypeError):
+        return {"dmn_result": False, "decision": "routed", "status": "escalated",
+                "evaluation_reasoning": "Request data is invalid or incoherent; human review required."}
+    if live_data.get("hrms_error") or not live_data.get("employee_profile", {}).get("found") or state.get("error"):
+        return {"dmn_result": False, "decision": "routed", "status": "escalated",
+                "evaluation_reasoning": "Authoritative HRMS data or workflow state is unavailable; human review required."}
+
     # P0-2: Trusted Request Type (State request_type is authoritative, NOT LLM intent)
     trusted_request_type = state.get("request_type", "leave").lower()
     llm_intent = extracted.get("intent", "").lower()
@@ -59,7 +69,7 @@ def _evaluate_leave_dmn(submitted_data: dict, extracted: dict, live_data: dict, 
     decision = "approved"
 
     # P0-3: Validate & Normalize Leave Category
-    submitted_category = (submitted_data.get("leave_type") or extracted.get("category") or "annual").strip().lower()
+    submitted_category = (submitted_data.get("leave_type") or "").strip().lower()
     if submitted_category not in VALID_LEAVE_CATEGORIES:
         return {
             "dmn_result": False,
@@ -69,7 +79,7 @@ def _evaluate_leave_dmn(submitted_data: dict, extracted: dict, live_data: dict, 
 
     # P0-1 & P0-7: Server-side Date Validation & Duration Calculation
     start_str = submitted_data.get("start_date")
-    end_str = submitted_data.get("end_date") or start_str
+    end_str = submitted_data.get("end_date")
 
     if not start_str:
         return {
@@ -99,6 +109,9 @@ def _evaluate_leave_dmn(submitted_data: dict, extracted: dict, live_data: dict, 
     # Deterministic duration calculation (inclusive)
     days_req = (end_dt - start_dt).days + 1
     if submitted_data.get("half_day"):
+        if start_dt != end_dt:
+            return {"dmn_result": False, "decision": "routed", "status": "escalated",
+                    "evaluation_reasoning": "Half-day leave must cover a single date."}
         days_req = 0.5
 
     if days_req <= 0:
@@ -109,7 +122,8 @@ def _evaluate_leave_dmn(submitted_data: dict, extracted: dict, live_data: dict, 
         }
 
     # STRICT ZERO BACKDATE RULE: start_date MUST be >= today
-    today_dt = date.today()
+    from app.services.normalization import today_local
+    today_dt = today_local()
     if start_dt < today_dt:
         return {
             "dmn_result": False,
@@ -161,27 +175,21 @@ def _evaluate_leave_dmn(submitted_data: dict, extracted: dict, live_data: dict, 
         decision = "routed"
         reasons.append(f"Multiple team members ({len(approved_overlaps)}) have overlapping approved leave during this period.")
 
-    # P0-10: Evidence Requirement Rule
-    # Rule: Sick leave >= 3 days requires supporting evidence document
-    has_evidence = bool(
-        state.get("has_evidence")
-        or live_data.get("has_evidence")
-        or submitted_data.get("evidence_id")
-        or submitted_data.get("evidence_list")
-    )
-    if submitted_category == "sick" and days_req >= 3 and not has_evidence:
-        passed = False
-        decision = "awaiting_evidence"
-        reasons.append(
-            f"Medical evidence attachment (PDF, PNG, or JPEG up to 5MB) is required for sick leave requests of 3 days or more ({days_req} days requested). Request is waiting for medical certificate upload before it can be submitted to manager."
-        )
+    from app.config import get_settings
+    threshold = get_settings().sick_evidence_threshold_days
+    if submitted_category == "sick" and days_req >= threshold:
+        passed, decision = False, "routed"
+        if state.get("evidence_present"):
+            reasons.append("Supporting evidence attached; human evidence review is required. File presence is not verification.")
+        else:
+            reasons.append("Required supporting evidence was not provided; manager review is required.")
 
     if passed:
         reasons.append(
             f"SOP Compliance Verified: Employee has {remaining_balance} days of {submitted_category.capitalize()} leave available for {days_req} requested day(s)."
         )
 
-    calc_status = "awaiting_evidence" if decision == "awaiting_evidence" else ("escalated" if not passed else "in_progress")
+    calc_status = "escalated" if not passed else "in_progress"
 
     return {
         "dmn_result": passed,

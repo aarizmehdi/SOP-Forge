@@ -66,16 +66,20 @@ async def audit_log(state: RequestState) -> dict:
             details={
                 "request_type": state.get("request_type", "unknown"),
                 "employee_code": state.get("employee_code", "unknown"),
+                "retrieval_status": state.get("retrieval_status"),
                 "sla_deadline": state.get("sla_deadline"),
                 "override_count": len(state.get("override_log", [])),
             },
         )
         
+        dmn_entry = entry.model_copy(update={"id": str(uuid.uuid4()), "event_type": AuditEventType.DMN_EVALUATED})
+        await db.audit_logs.insert_one(dmn_entry.model_dump(mode="json"))
         await db.audit_logs.insert_one(entry.model_dump(mode="json"))
         logger.info(f"Audit Log: Entry recorded for request {request_id}")
 
     except Exception as e:
         logger.error(f"Audit Log: Failed to write audit entry: {e}")
+        raise
 
     return {
         "status": status,

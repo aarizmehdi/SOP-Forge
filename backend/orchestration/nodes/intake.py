@@ -4,7 +4,7 @@ Validates submitted request data and enriches state with live HRMS data.
 """
 
 import logging
-from datetime import date
+from datetime import date, timedelta
 
 from app.integrations.hrms_mock import get_hrms
 from orchestration.state import RequestState
@@ -42,8 +42,9 @@ async def intake(state: RequestState) -> dict:
         live_data["leave_balance"] = balance
 
         # Fetch recent attendance (last 30 days)
-        today = date.today()
-        start_30 = date(today.year, today.month - 1 if today.month > 1 else 12, today.day)
+        from app.services.normalization import today_local
+        today = today_local()
+        start_30 = today - timedelta(days=30)
         attendance = await hrms.get_attendance(employee_code, start_30, today)
         live_data["recent_attendance"] = attendance
 
@@ -57,13 +58,22 @@ async def intake(state: RequestState) -> dict:
                 date.fromisoformat(leave_start),
                 date.fromisoformat(leave_end),
             )
-            live_data["team_leaves_overlap"] = team_leaves
+            live_data["team_leaves_overlap"] = [item for item in team_leaves if item.get("employee_id") != employee_code]
 
     except Exception as e:
         logger.warning(f"Intake: HRMS fetch partially failed: {e}")
         live_data["hrms_error"] = str(e)
 
+    # Evidence exists only if an authoritative MongoDB record is linked to this request.
+    from app.database import get_mongodb_client
+    client = get_mongodb_client()
+    try:
+        db = client.get_default_database()
+    except Exception:
+        db = client["sopforge"]
+    evidence_present = bool(await db.evidence.find_one({"request_id": state["request_id"]}))
     return {
+        "evidence_present": evidence_present,
         "live_data": live_data,
         "status": "in_progress",
     }

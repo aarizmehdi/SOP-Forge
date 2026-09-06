@@ -28,17 +28,8 @@ async def escalate(state: RequestState) -> dict:
     # Calculate SLA deadline
     sla_deadline = datetime.now(timezone.utc) + timedelta(hours=settings.sla_default_hours)
 
-    # Check if request is awaiting evidence
-    if decision == "awaiting_evidence" or status == "awaiting_evidence":
-        logger.info(
-            f"Escalate node: Request {request_id} is awaiting evidence. "
-            f"Preserving awaiting_evidence status."
-        )
-        return {
-            "status": "awaiting_evidence",
-            "decision": "awaiting_evidence",
-            "sla_deadline": sla_deadline.isoformat(),
-        }
+    if decision == "rejected" and status == "resolved":
+        return {"status": "resolved", "decision": "rejected", "sla_deadline": None}
 
     logger.info(
         f"Escalate: Request {request_id} escalated "

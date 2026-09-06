@@ -5,8 +5,9 @@ Pydantic models for request submission and response.
 
 from datetime import datetime
 from uuid import UUID
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.models.request import Decision, RequestStatus, RequestType
 
@@ -15,35 +16,45 @@ from app.models.request import Decision, RequestStatus, RequestType
 
 class LeaveRequestData(BaseModel):
     """Data schema for a leave request."""
-    leave_type: str = Field(..., description="annual, sick, casual, unpaid")
+    model_config = {"extra": "forbid", "str_strip_whitespace": True}
+    leave_type: Literal["annual", "sick", "casual", "unpaid"]
     start_date: str = Field(..., description="YYYY-MM-DD")
     end_date: str = Field(..., description="YYYY-MM-DD")
-    reason: str = Field(..., min_length=5, max_length=1000)
+    reason: str = Field(..., min_length=2, max_length=1000)
     half_day: bool = False
+    duration_days: float = Field(..., gt=0, le=366, allow_inf_nan=False)
     contact_during_leave: str | None = None
 
 
 class ReimbursementRequestData(BaseModel):
     """Data schema for a reimbursement request."""
-    category: str = Field(..., description="travel, medical, equipment, other")
-    amount: float = Field(..., gt=0)
-    currency: str = "USD"
+    model_config = {"extra": "forbid", "str_strip_whitespace": True}
+    category: Literal["travel", "medical", "equipment", "other"]
+    amount: float = Field(..., gt=0, allow_inf_nan=False)
+    currency: Literal["USD"] = "USD"
     description: str = Field(..., min_length=5, max_length=1000)
     receipt_ref: str | None = None
 
 
 class ITAccessRequestData(BaseModel):
     """Data schema for an IT access request."""
-    system_name: str = Field(..., min_length=2)
-    access_level: str = Field(..., description="read, write, admin")
+    model_config = {"extra": "forbid", "str_strip_whitespace": True}
+    system_name: str = Field(..., min_length=2, max_length=200)
+    access_level: Literal["read", "write", "admin"]
     justification: str = Field(..., min_length=10, max_length=1000)
-    duration_days: int | None = None
+    duration_days: int | None = Field(default=None, gt=0)
 
 
 class RequestSubmission(BaseModel):
     """Incoming request submission from an employee."""
     request_type: RequestType
     submitted_data: dict = Field(..., description="Type-specific request data")
+
+    @model_validator(mode="after")
+    def validate_data(self):
+        from app.services.normalization import normalize_submission
+        self.submitted_data = normalize_submission(self.request_type.value, self.submitted_data)
+        return self
 
 
 # ── Responses ──
@@ -53,6 +64,15 @@ class OverrideEntry(BaseModel):
     by: str
     justification: str
     ts: str
+
+
+class EvidenceMetadata(BaseModel):
+    """Safe attachment metadata exposed through request responses."""
+    id: UUID
+    original_filename: str
+    content_type: str
+    size_bytes: int = Field(..., ge=0)
+    uploaded_at: datetime
 
 
 class RequestResponse(BaseModel):
@@ -68,6 +88,8 @@ class RequestResponse(BaseModel):
     status: RequestStatus
     sla_deadline: datetime | None
     override_log: list[dict] | None
+    has_evidence: bool
+    evidence_list: list[EvidenceMetadata]
     created_at: datetime
     updated_at: datetime
 
@@ -81,6 +103,8 @@ class RequestListItem(BaseModel):
     decision: Decision
     status: RequestStatus
     confidence: float | None
+    has_evidence: bool
+    evidence_list: list[EvidenceMetadata]
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -102,7 +126,8 @@ class ChatMessage(BaseModel):
 
 class AssistantChatRequest(BaseModel):
     """Payload for conversational AI assistant."""
-    message: str = Field(..., min_length=1)
+    message: str = Field(..., min_length=1, max_length=4000)
+    conversation_id: UUID | None = None
     history: list[ChatMessage] = Field(default_factory=list, description="Full conversation transcript for multi-turn memory")
 
 
@@ -111,4 +136,7 @@ class AssistantChatResponse(BaseModel):
     response_type: str = Field(..., description="chat | request_processed | policy_info")
     message: str
     request_details: RequestResponse | None = None
-    suggested_options: list[str] | None = Field(default=None, description="Optional tappable Smart Chip suggestions for the user")
+    conversation_id: str | None = None
+    draft_state: str | None = None
+    upload_available: bool = False
+    retrieval_mode: str | None = None

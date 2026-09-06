@@ -48,7 +48,7 @@ const API = (() => {
 
         // Requests
         submitRequest: (data) => request('POST', '/api/request/submit', data),
-        sendChatAssistant: (message, history = []) => request('POST', '/api/request/assistant', { message, history }),
+        sendChatAssistant: (message, conversation_id = null) => request('POST', '/api/request/assistant', { message, conversation_id }),
         getMyRequests: (limit = 50) => request('GET', `/api/request/my?limit=${limit}`),
         getLeaveBalances: () => request('GET', '/api/request/leave-balances'),
         getRequest: (id) => request('GET', `/api/request/${id}`),
