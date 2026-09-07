@@ -14,6 +14,27 @@ function loadEscapeHtml() {
     return sandbox.escapeHtml;
 }
 
+test('auth exposes the stored bearer token used by evidence operations', () => {
+    const values = new Map([
+        ['sopforge_token', 'evidence-token'],
+        ['sopforge_user', JSON.stringify({name: 'Test Employee', role: 'employee'})],
+    ]);
+    const sandbox = {
+        localStorage: {
+            getItem: key => values.get(key) || null,
+            setItem: (key, value) => values.set(key, value),
+            removeItem: key => values.delete(key),
+        },
+        API: {}, document: {getElementById: () => ({style: {}, classList: {add() {}}})},
+    };
+    vm.createContext(sandbox);
+    vm.runInContext(
+        fs.readFileSync('frontend/js/auth.js', 'utf8') + '\nglobalThis.auth = Auth;',
+        sandbox,
+    );
+    assert.equal(sandbox.auth.getToken(), 'evidence-token');
+});
+
 test('chat sends only message and owned conversation identifier', async () => {
     let sent;
     const sandbox = { window: {location: {origin: 'http://test'}}, localStorage: {getItem: () => 'test-token'},

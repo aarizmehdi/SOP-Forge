@@ -55,6 +55,10 @@ const Auth = (() => {
         return currentUser;
     }
 
+    function getToken() {
+        return getStoredAuth().token;
+    }
+
     function getRole() {
         const user = getUser();
         return user ? user.role : null;
@@ -71,5 +75,8 @@ const Auth = (() => {
         return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
     }
 
-    return { login, logout, isAuthenticated, getUser, getRole, hasMinRole, getInitials };
+    return {
+        login, logout, isAuthenticated, getUser, getToken, getRole,
+        hasMinRole, getInitials,
+    };
 })();
