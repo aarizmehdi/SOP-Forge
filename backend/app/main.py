@@ -116,7 +116,10 @@ def create_app() -> FastAPI:
 
     # ── Serve Frontend Static Files (catch-all, must be last) ──
     import os
-    frontend_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "frontend")
+    # Vite is the only frontend build. In production FastAPI serves its compiled SPA.
+    frontend_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "frontend", "dist"
+    )
     if os.path.exists(frontend_path):
         app.mount("/", StaticFiles(directory=frontend_path, html=True), name="frontend")
 

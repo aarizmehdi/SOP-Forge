@@ -158,6 +158,26 @@ V2 is accepted when all of the following are verified:
 
 ## Current implementation
 
+### Production frontend boundary
+
+The interface is one React and TypeScript application built by Vite from
+`frontend/src` into `frontend/dist`. FastAPI serves only that compiled SPA.
+`HashRouter` keeps application routes portable between FastAPI and Vercel, while
+Vercel forwards `/api/*` and `/health` to Railway before its SPA fallback.
+
+Authentication lives in one React context. A single typed API client reads the
+bearer token, serializes JSON or multipart payloads, converts FastAPI errors to a
+structured `ApiError`, and triggers context logout on every 401. Server responses
+remain authoritative: chat renders `ui_state`, `allowed_actions`, and `terminal`
+directly. TanStack Query owns remote caches; the active transcript and its explicit
+state machine remain local to the chat page.
+
+The frontend is organized by boundary: `auth` for session lifecycle, `lib` for
+transport, `types` for API contracts, `components` for shared accessible UI and
+the application shell, and `pages` for role-specific workflows. Backend API,
+authorization, MongoDB models, Redis behavior, retrieval, conversation, DMN,
+evidence, and audit semantics are unchanged.
+
 Implemented on `fix/intelligent-conversation-experience`:
 
 - Added the department-to-language start flow, immutable server-owned output language, bounded server-owned recent turns, compare-and-set persistence, evidence-gate enforcement, and typed closed-conversation errors.

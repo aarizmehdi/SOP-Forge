@@ -1,0 +1,29 @@
+{
+  "name": "sop-forge-frontend",
+  "private": true,
+  "version": "2.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit && vite build",
+    "format:check": "prettier --check src index.html vite.config.ts package.json tsconfig.json vercel.json",
+    "preview": "vite preview --host 127.0.0.1",
+    "test": "node --test ../backend/tests/frontend_contract.test.js"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.87.1",
+    "lucide-react": "^0.544.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "react-router-dom": "^7.9.1"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.13",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^5.0.2",
+    "prettier": "^3.9.6",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.5"
+  }
+}

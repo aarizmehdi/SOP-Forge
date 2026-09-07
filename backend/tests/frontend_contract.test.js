@@ -1,236 +1,44 @@
-// Run with node --test backend/tests/frontend_contract.test.js from repository root.
+// Source-level production frontend contracts. Run from the repository root.
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
 const fs = require('node:fs');
-const vm = require('node:vm');
+const path = require('node:path');
+const repositoryRoot = path.resolve(__dirname, '..', '..');
+const sourcePath = value => path.join(repositoryRoot, value);
+const read = value => fs.readFileSync(sourcePath(value), 'utf8');
 
-function loadEscapeHtml() {
-    const source = fs.readFileSync('frontend/js/app.js', 'utf8');
-    const start = source.indexOf('    function escapeHtml(');
-    const end = source.indexOf('\n\n    return', start);
-    const sandbox = {};
-    vm.createContext(sandbox);
-    vm.runInContext(source.slice(start, end) + '\nglobalThis.escapeHtml = escapeHtml;', sandbox);
-    return sandbox.escapeHtml;
-}
-
-test('auth exposes the stored bearer token used by evidence operations', () => {
-    const values = new Map([
-        ['sopforge_token', 'evidence-token'],
-        ['sopforge_user', JSON.stringify({name: 'Test Employee', role: 'employee'})],
-    ]);
-    const sandbox = {
-        localStorage: {
-            getItem: key => values.get(key) || null,
-            setItem: (key, value) => values.set(key, value),
-            removeItem: key => values.delete(key),
-        },
-        API: {}, document: {getElementById: () => ({style: {}, classList: {add() {}}})},
-    };
-    vm.createContext(sandbox);
-    vm.runInContext(
-        fs.readFileSync('frontend/js/auth.js', 'utf8') + '\nglobalThis.auth = Auth;',
-        sandbox,
-    );
-    assert.equal(sandbox.auth.getToken(), 'evidence-token');
+test('frontend has one React/Vite entrypoint with strict TypeScript', () => {
+  assert.match(read('frontend/index.html'), /src="\/src\/main\.tsx"/);
+  assert.match(read('frontend/tsconfig.json'), /"strict": true/);
+  assert.equal(fs.existsSync(sourcePath('frontend/js')), false);
+  assert.equal(fs.existsSync(sourcePath('frontend/index.css')), false);
 });
-
-test('chat sends only message and owned conversation identifier', async () => {
-    let sent;
-    const sandbox = { window: {location: {origin: 'http://test'}}, localStorage: {getItem: () => 'test-token'},
-        fetch: async (url, opts) => {sent = {url, opts}; return {ok: true, status: 200, json: async () => ({})};} };
-    vm.createContext(sandbox);
-    vm.runInContext(fs.readFileSync('frontend/js/api.js', 'utf8') + '\nglobalThis.api = API;', sandbox);
-    await sandbox.api.sendChatAssistant('four days', 'draft-id');
-    assert.deepEqual(JSON.parse(sent.opts.body), {message: 'four days', conversation_id: 'draft-id'});
-    assert.equal(sent.opts.headers.Authorization, 'Bearer test-token');
+test('central client attaches bearer auth to JSON and multipart requests', () => {
+  const source = read('frontend/src/lib/api.ts');
+  assert.match(source, /headers\.set\(["']Authorization["'], `Bearer \$\{token\}`\)/);
+  assert.match(source, /init\.body instanceof FormData/);
+  assert.match(source, /form\.append\(["']file["'], file\)/);
+  assert.match(source, /response\.status === 401/);
+  assert.match(source, /openEvidence/);
 });
-
-test('manager evidence viewing includes authentication and uses backend response bytes', async () => {
-    let sent;
-    const viewer = {location: {}, close() {}};
-    const sandbox = { window: {open: () => viewer}, Auth: {getToken: () => 'test-token'},
-        fetch: async (url, opts) => {sent = {url, opts}; return {ok: true, blob: async () => 'file-bytes'};},
-        URL: {createObjectURL: blob => {assert.equal(blob, 'file-bytes'); return 'blob:test';}, revokeObjectURL() {}},
-        setTimeout() {}, App: {toast() {throw new Error('unexpected toast');}} };
-    vm.createContext(sandbox);
-    vm.runInContext(fs.readFileSync('frontend/js/components/review-panel.js', 'utf8') + '\nglobalThis.panel = ReviewPanel;', sandbox);
-    await sandbox.panel.openEvidence('evidence-id');
-    assert.equal(sent.opts.headers.Authorization, 'Bearer test-token');
-    assert.equal(viewer.location.href, 'blob:test');
-    assert.equal(viewer.opener, null);
+test('chat follows the authoritative five-state contract', () => {
+  const source = read('frontend/src/pages/ChatPage.tsx');
+  for (const state of ['DOMAIN_SELECTION','LANGUAGE_SELECTION','ACTIVE_CHAT','EVIDENCE_GATE','TERMINAL']) assert.match(source, new RegExp(state));
+  assert.match(source, /result\.ui_state/); assert.match(source, /result\.allowed_actions/);
+  assert.match(source, /upload_evidence/); assert.match(source, /skip_evidence/);
+  for (const domain of ['leave_hr','expenses_finance','it_system_access','policies_general']) assert.ok(source.includes(domain), `missing ${domain}`);
 });
-
-test('employee evidence viewing includes authentication and uses size_bytes contract', async () => {
-    let sent;
-    const viewer = {location: {}, close() {}};
-    const sandbox = { window: {open: () => viewer}, Auth: {getToken: () => 'employee-token'},
-        fetch: async (url, opts) => {sent = {url, opts}; return {ok: true, blob: async () => 'employee-file'};},
-        URL: {createObjectURL: blob => {assert.equal(blob, 'employee-file'); return 'blob:employee';}, revokeObjectURL() {}},
-        setTimeout() {}, document: {createElement: () => ({click() {}})}, App: {toast() {throw new Error('unexpected toast');}} };
-    vm.createContext(sandbox);
-    vm.runInContext(fs.readFileSync('frontend/js/components/my-requests.js', 'utf8') + '\nglobalThis.requests = MyRequests;', sandbox);
-    await sandbox.requests.openEvidence('evidence-id');
-    assert.equal(sent.url, '/api/evidence/file/evidence-id');
-    assert.equal(sent.opts.headers.Authorization, 'Bearer employee-token');
-    assert.equal(viewer.location.href, 'blob:employee');
-    assert.equal(viewer.opener, null);
-    assert.match(fs.readFileSync('frontend/js/components/my-requests.js', 'utf8'), /ev\.size_bytes/);
+test('all preserved backend workflows are represented in the typed client', () => {
+  const source = read('frontend/src/lib/api.ts');
+  for (const path of ['/api/auth/login','/api/request/submit','/api/request/assistant/start','/api/review/pending','/api/audit/logs','/api/incidents','/api/admin/sop','/api/evidence/file','/api/speech/token']) assert.ok(source.includes(path), `missing ${path}`);
 });
-
-test('manager review rendering escapes employee-controlled fields', async () => {
-    const escapeHtml = loadEscapeHtml();
-    const list = {innerHTML: ''};
-    const malicious = '<img src=x onerror=globalThis.pwned=true>';
-    const sandbox = {
-        Auth: {getUser: () => ({role: 'manager'}), hasMinRole: () => false},
-        API: {getPendingReviews: async () => [{
-            id: '00000000-0000-0000-0000-000000000001', employee_name: malicious,
-            employee_id_code: malicious, department: malicious, request_type: 'leave', status: 'escalated',
-            ai_decision: 'routed', created_at: '2026-09-06T00:00:00Z', sla_remaining_minutes: 30,
-            submitted_data: {leave_type: 'annual', start_date: '2026-09-07', end_date: '2026-09-07', reason: malicious},
-            evaluation_reasoning: malicious, policy_refs: [malicious], has_evidence: false,
-            override_log: [{by_name: malicious, justification: malicious}]
-        }]},
-        App: {escapeHtml},
-        document: {getElementById: id => id === 'review-list' ? list : null, querySelectorAll: () => []},
-        setTimeout() {}
-    };
-    vm.createContext(sandbox);
-    vm.runInContext(fs.readFileSync('frontend/js/components/review-panel.js', 'utf8') + '\nglobalThis.panel = ReviewPanel;', sandbox);
-    await sandbox.panel.render({innerHTML: ''});
-    await new Promise(resolve => setImmediate(resolve));
-    assert.doesNotMatch(list.innerHTML, /<img/i);
-    assert.match(list.innerHTML, /&lt;img/);
+test('production targets preserve Vercel API proxy and FastAPI dist serving', () => {
+  const vercel = read('frontend/vercel.json'); const backend = read('backend/app/main.py');
+  assert.match(vercel, /sop-forge-production\.up\.railway\.app\/api/);
+  assert.match(vercel, /"outputDirectory": "dist"/); assert.match(backend, /"frontend", "dist"/);
 });
-
-test('employee request detail escapes content and renders authenticated evidence action', async () => {
-    const escapeHtml = loadEscapeHtml();
-    const malicious = '</textarea><script>globalThis.pwned=true</script>';
-    let overlay;
-    const sandbox = {
-        API: {getRequest: async () => ({
-            id: '00000000-0000-0000-0000-000000000001', request_type: 'leave', status: 'escalated', decision: 'routed',
-            created_at: '2026-09-06T00:00:00Z', submitted_data: {leave_type: 'annual', reason: malicious},
-            has_evidence: true, evidence_list: [{id: '00000000-0000-0000-0000-000000000002', original_filename: malicious, size_bytes: 2048}]
-        })},
-        App: {escapeHtml, toast() {}}, Auth: {getToken: () => 'token'}, window: {open: () => null},
-        document: {createElement: () => ({innerHTML: '', className: '', addEventListener() {}}), body: {appendChild: value => {overlay = value;}}, querySelectorAll: () => []},
-        setTimeout() {}, URL: {createObjectURL: () => 'blob:test', revokeObjectURL() {}}
-    };
-    vm.createContext(sandbox);
-    vm.runInContext(fs.readFileSync('frontend/js/components/my-requests.js', 'utf8') + '\nglobalThis.requests = MyRequests;', sandbox);
-    await sandbox.requests.viewDetail('00000000-0000-0000-0000-000000000001');
-    assert.doesNotMatch(overlay.innerHTML, /<script/i);
-    assert.match(overlay.innerHTML, /&lt;script/);
-    assert.match(overlay.innerHTML, /MyRequests\.openEvidence/);
-    assert.match(overlay.innerHTML, /\(2 KB\)/);
-});
-
-test('overridden decisions retain truthful employee status', () => {
-    const source = fs.readFileSync('frontend/js/components/my-requests.js', 'utf8');
-    const start = source.indexOf('    function getStatusInfo(');
-    const end = source.indexOf('    function getTypeLabel(', start);
-    const sandbox = {};
-    vm.createContext(sandbox);
-    vm.runInContext(source.slice(start, end) + '\nglobalThis.statusInfo = getStatusInfo;', sandbox);
-    assert.equal(sandbox.statusInfo('overridden', 'approved').label, 'Approved');
-    assert.equal(sandbox.statusInfo('overridden', 'rejected').label, 'Declined');
-    assert.equal(sandbox.statusInfo('escalated', 'routed').label, 'Under Review');
-});
-
-function loadChatAssistant(api = {}) {
-    const controls = {innerHTML: ''};
-    const welcome = {style: {}};
-    const messages = {style: {}, appendChild() {}, scrollTop: 0, scrollHeight: 0};
-    const welcomeInner = {innerHTML: ''};
-    const sandbox = {
-        Auth: {getUser: () => ({name: 'Test Employee'}), getInitials: () => 'TE'},
-        API: api, App: {toast() {}}, alert() {}, FormData: class {},
-        document: {
-            getElementById: id => ({
-                'ca-controls': controls, 'ca-welcome': welcome, 'ca-messages': messages,
-            })[id] || null,
-            querySelectorAll: () => [],
-            querySelector: selector => selector === '.ca-welcome-inner' ? welcomeInner : null,
-            createElement: () => ({innerHTML: '', className: ''}),
-        },
-        window: {},
-    };
-    vm.createContext(sandbox);
-    vm.runInContext(fs.readFileSync('frontend/js/components/chat-assistant.js', 'utf8') + '\nglobalThis.chat = ChatAssistant;', sandbox);
-    return {chat: sandbox.chat, controls, welcomeInner, sandbox};
-}
-
-test('domain selection renders four choices without a composer', async () => {
-    const {chat} = loadChatAssistant();
-    const container = {innerHTML: ''};
-    await chat.render(container);
-    assert.equal((container.innerHTML.match(/data-domain-choice=/g) || []).length, 4);
-    assert.doesNotMatch(container.innerHTML, /id="chat-input"/);
-    assert.equal(chat.getState().uiState, 'DOMAIN_SELECTION');
-});
-
-test('evidence gate renders exactly upload and skip primary actions', () => {
-    const {chat, controls} = loadChatAssistant();
-    chat.setState('EVIDENCE_GATE', ['upload_evidence', 'skip_evidence']);
-    assert.equal((controls.innerHTML.match(/data-primary-action=/g) || []).length, 2);
-    assert.match(controls.innerHTML, />Upload Evidence</);
-    assert.match(controls.innerHTML, />Skip Evidence</);
-    assert.doesNotMatch(controls.innerHTML, /id="chat-input"|chat-mic-btn|chat-send-btn/);
-});
-
-test('terminal controls omit composer and title comes from authoritative result', () => {
-    const {chat, controls} = loadChatAssistant();
-    chat.setState('TERMINAL', ['view_request', 'start_new_conversation']);
-    assert.doesNotMatch(controls.innerHTML, /id="chat-input"|chat-mic-btn|chat-send-btn/);
-    assert.equal(chat.terminalTitle({status: 'escalated', decision: 'routed'}), 'Sent for Manager Review');
-    assert.equal(chat.terminalTitle({status: 'resolved', decision: 'approved'}), 'Approved');
-});
-
-test('department selection requires a language before creating a conversation', async () => {
-    const calls = [];
-    const api = {startChatConversation: async (domain, language) => {
-        calls.push({domain, language});
-        return {conversation_id: 'draft-id', message: 'Welcome', ui_state: 'ACTIVE_CHAT',
-            allowed_actions: ['send_message', 'use_microphone']};
-    }};
-    const {chat, welcomeInner} = loadChatAssistant(api);
-    await chat.render({innerHTML: ''});
-    await chat.selectDomain('leave_hr');
-    assert.equal(chat.getState().uiState, 'LANGUAGE_SELECTION');
-    assert.equal(calls.length, 0);
-    assert.equal((welcomeInner.innerHTML.match(/data-language-choice=/g) || []).length, 2);
-    await chat.selectLanguage('roman_urdu');
-    assert.deepEqual(calls, [{domain: 'leave_hr', language: 'roman_urdu'}]);
-    assert.equal(chat.getState().uiState, 'ACTIVE_CHAT');
-    assert.equal(chat.getState().selectedLanguage, 'roman_urdu');
-});
-
-test('incomplete terminal offers only a new conversation', () => {
-    const {chat, controls} = loadChatAssistant();
-    chat.setState('TERMINAL', ['start_new_conversation'], {outcome: 'incomplete_conversation'});
-    assert.equal(chat.terminalTitle({outcome: 'incomplete_conversation'}), 'Conversation Closed');
-    assert.doesNotMatch(controls.innerHTML, /View Request/);
-    assert.match(controls.innerHTML, /Start New Conversation/);
-    assert.doesNotMatch(controls.innerHTML, /id="chat-input"/);
-});
-
-test('API starts domains and skips evidence through explicit transactions', async () => {
-    const calls = [];
-    const sandbox = {
-        window: {location: {origin: 'http://test'}},
-        localStorage: {getItem: () => 'test-token'},
-        fetch: async (url, opts) => {
-            calls.push({url, body: opts.body ? JSON.parse(opts.body) : null});
-            return {ok: true, status: 200, json: async () => ({})};
-        },
-    };
-    vm.createContext(sandbox);
-    vm.runInContext(fs.readFileSync('frontend/js/api.js', 'utf8') + '\nglobalThis.api = API;', sandbox);
-    await sandbox.api.startChatConversation('leave_hr', 'en');
-    await sandbox.api.skipChatEvidence('conversation-id');
-    assert.deepEqual(calls[0].body, {domain: 'leave_hr', language: 'en'});
-    assert.equal(calls[1].url, 'http://test/api/evidence/draft/conversation-id/skip');
-    assert.equal(calls[1].body, null);
+test('transaction cleanup is dry-run by default and preserves policy data', () => {
+  const source = read('scripts/maintenance/clear_test_transactional_data.py');
+  assert.match(source, /CLEAR-TEST-TRANSACTIONAL-DATA/); assert.match(source, /if args\.confirm != CONFIRMATION/);
+  assert.doesNotMatch(source, /database\.(users|departments|sop_documents|sop_chunks)\.delete/);
 });

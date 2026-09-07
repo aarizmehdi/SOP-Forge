@@ -37,6 +37,9 @@ redisdata/
 htmlcov/
 .coverage
 /test-results/
+/frontend/node_modules/
+/frontend/dist/
+/uploads/evidence/
 
 # Alembic
 alembic/versions/__pycache__/
