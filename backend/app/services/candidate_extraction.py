@@ -16,8 +16,10 @@ class Candidates(BaseModel):
     request_type: Literal["leave", "reimbursement", "it_access"] | None = None
     requested_domain: Literal["leave_hr", "expenses_finance", "it_system_access", "policies_general"] | None = None
     facts: dict = Field(default_factory=dict)
+    recovered_facts: dict = Field(default_factory=dict)
     corrections: dict = Field(default_factory=dict)
-    field_sources: dict[str, Literal["explicit", "inferred"]] = Field(default_factory=dict)
+    field_sources: dict[str, Literal["explicit", "inferred", "recovered"]] = Field(default_factory=dict)
+    references_prior_context: bool = False
     inferred_leave_category: Literal["annual", "sick", "casual", "unpaid"] | None = None
     inference_confidence: float = Field(default=0, ge=0, le=1)
     language_signal: Literal["en", "roman_urdu", "mixed"] | None = None
@@ -31,13 +33,17 @@ class Candidates(BaseModel):
 
 PROMPT = """You interpret one employee turn for a professional internal assistant.
 Return JSON matching this structure exactly: intent, request_type, requested_domain,
-facts, corrections, field_sources, inferred_leave_category, inference_confidence,
-language_signal, language_confidence, governance_signal, governance_confidence,
-ambiguities.
+facts, recovered_facts, corrections, field_sources, references_prior_context,
+inferred_leave_category, inference_confidence, language_signal, language_confidence,
+governance_signal, governance_confidence, ambiguities.
 
-The immutable selected domain and server draft are authoritative. Extract only facts
-newly supplied or corrected now. Allowed request types by domain are supplied in
-server_context. Leave facts: leave_type, start_date, end_date, duration_days,
+The immutable selected domain, selected output language, and server draft are
+authoritative. Interpret the latest employee turn holistically with the recent
+server-owned turns, known facts, unresolved concepts, and active policy excerpts.
+Extract every useful fact newly supplied or corrected now, even when several facts
+appear in one sentence and even when they are not the currently requested field.
+Allowed request types by domain are supplied in server_context. Leave facts:
+leave_type, start_date, end_date, duration_days,
 half_day, reason. Reimbursement facts: category, amount, currency, description.
 IT facts: system_name, access_level, justification, duration_days. Allowed leave
 categories are annual, sick, casual, unpaid. Mark each material field explicit or
@@ -48,9 +54,19 @@ leave as the employee's own illness, injury/medical recovery, or appointment; in
 sick leave with high confidence for a clear employee injury such as a broken leg or
 fractured ankle. Infer the most likely allowed leave category from active policy
 context when clear and return confidence; do not invent an unsupported category.
-Interpret natural dates relative to current_date when unambiguous and tolerate
+Interpret natural dates by their role in the sentence: from/starting introduces a
+start, till/until/to introduces an end, and for N days introduces duration. Interpret
+natural dates relative to current_date when unambiguous and tolerate
 ordinary spelling errors. Return normalized ISO dates when confident, but put
 ambiguous numeric dates such as 10/11 in ambiguities as start_date.
+
+Understand indirect, misspelled, slang, English, Roman Urdu, and mixed-language input
+semantically. Do not require the employee to use backend enum words. Before leaving a
+required field unresolved, determine whether the conversation and policy make it safe
+to infer. If the employee refers to an earlier message (for example, "I already told
+you", "same reason", or "the date above"), set references_prior_context=true and copy
+only the relevant employee-supplied facts from recent user turns into recovered_facts.
+Never put the reference phrase itself into reason, description, or justification.
 
 Intent can be request, policy, balance, help, general, or request_policy. A policy,
 balance, or help question during collection does not alter facts. Use requested_domain
@@ -86,6 +102,10 @@ async def extract_candidates(message, draft, policy_context=None):
     )
     context = {
         "selected_domain": draft.domain.value,
+        "selected_output_language": draft.language.value,
+        "authenticated_employee": True,
+        "lifecycle_state": draft.state.value,
+        "allowed_actions": ["send_message", "use_microphone"],
         "allowed_request_type": {
             "leave_hr": "leave", "expenses_finance": "reimbursement",
             "it_system_access": "it_access", "policies_general": None,
@@ -93,6 +113,8 @@ async def extract_candidates(message, draft, policy_context=None):
         "allowed_leave_categories": ["annual", "sick", "casual", "unpaid"],
         "fields": draft.fields,
         "last_unresolved_need": draft.last_question,
+        "last_requested_concept": draft.last_question_field,
+        "clarification_attempts": draft.clarification_attempts,
         "missing_fields": draft.missing_fields,
         "ambiguous_fields": draft.ambiguous_fields,
         "recent_turns": [turn.model_dump() for turn in draft.recent_turns],
@@ -115,7 +137,7 @@ async def extract_candidates(message, draft, policy_context=None):
             data[key] = None
     if data.get("language_signal") == "neutral":
         data["language_signal"] = None
-    for container_name in ("facts", "corrections"):
+    for container_name in ("facts", "recovered_facts", "corrections"):
         container = data.get(container_name)
         if isinstance(container, dict):
             normalized = {}
@@ -147,6 +169,18 @@ def development_candidates(message, draft):
     normalized_date_text = normalize_natural_date_spelling(text)
     out = Candidates()
     facts = out.facts
+    if re.fullmatch(
+        r"(?:i (?:already )?told you(?: (?:above|before))?|same (?:reason|date|justification) as before|"
+        r"the (?:reason|date|justification) i mentioned (?:earlier|above)|use the same (?:reason|justification))",
+        text,
+    ):
+        out.intent = "request"
+        out.request_type = {
+            "leave_hr": "leave", "expenses_finance": "reimbursement",
+            "it_system_access": "it_access",
+        }.get(draft.domain.value)
+        out.references_prior_context = True
+        return out
     urdu_hits = re.findall(r"\b(mujhe|chutti|chahiye|nahi|bhej|tabiyat|kitn[ae]|kya|kal|aaj)\b", text)
     if len(urdu_hits) >= 2:
         out.language_signal, out.language_confidence = "roman_urdu", 0.9

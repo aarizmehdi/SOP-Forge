@@ -118,22 +118,27 @@ test('overridden decisions retain truthful employee status', () => {
     assert.equal(sandbox.statusInfo('escalated', 'routed').label, 'Under Review');
 });
 
-function loadChatAssistant() {
+function loadChatAssistant(api = {}) {
     const controls = {innerHTML: ''};
+    const welcome = {style: {}};
+    const messages = {style: {}, appendChild() {}, scrollTop: 0, scrollHeight: 0};
+    const welcomeInner = {innerHTML: ''};
     const sandbox = {
         Auth: {getUser: () => ({name: 'Test Employee'}), getInitials: () => 'TE'},
-        API: {}, App: {toast() {}}, alert() {}, FormData: class {},
+        API: api, App: {toast() {}}, alert() {}, FormData: class {},
         document: {
-            getElementById: id => id === 'ca-controls' ? controls : null,
+            getElementById: id => ({
+                'ca-controls': controls, 'ca-welcome': welcome, 'ca-messages': messages,
+            })[id] || null,
             querySelectorAll: () => [],
-            querySelector: () => null,
+            querySelector: selector => selector === '.ca-welcome-inner' ? welcomeInner : null,
             createElement: () => ({innerHTML: '', className: ''}),
         },
         window: {},
     };
     vm.createContext(sandbox);
     vm.runInContext(fs.readFileSync('frontend/js/components/chat-assistant.js', 'utf8') + '\nglobalThis.chat = ChatAssistant;', sandbox);
-    return {chat: sandbox.chat, controls, sandbox};
+    return {chat: sandbox.chat, controls, welcomeInner, sandbox};
 }
 
 test('domain selection renders four choices without a composer', async () => {
@@ -162,6 +167,34 @@ test('terminal controls omit composer and title comes from authoritative result'
     assert.equal(chat.terminalTitle({status: 'resolved', decision: 'approved'}), 'Approved');
 });
 
+test('department selection requires a language before creating a conversation', async () => {
+    const calls = [];
+    const api = {startChatConversation: async (domain, language) => {
+        calls.push({domain, language});
+        return {conversation_id: 'draft-id', message: 'Welcome', ui_state: 'ACTIVE_CHAT',
+            allowed_actions: ['send_message', 'use_microphone']};
+    }};
+    const {chat, welcomeInner} = loadChatAssistant(api);
+    await chat.render({innerHTML: ''});
+    await chat.selectDomain('leave_hr');
+    assert.equal(chat.getState().uiState, 'LANGUAGE_SELECTION');
+    assert.equal(calls.length, 0);
+    assert.equal((welcomeInner.innerHTML.match(/data-language-choice=/g) || []).length, 2);
+    await chat.selectLanguage('roman_urdu');
+    assert.deepEqual(calls, [{domain: 'leave_hr', language: 'roman_urdu'}]);
+    assert.equal(chat.getState().uiState, 'ACTIVE_CHAT');
+    assert.equal(chat.getState().selectedLanguage, 'roman_urdu');
+});
+
+test('incomplete terminal offers only a new conversation', () => {
+    const {chat, controls} = loadChatAssistant();
+    chat.setState('TERMINAL', ['start_new_conversation'], {outcome: 'incomplete_conversation'});
+    assert.equal(chat.terminalTitle({outcome: 'incomplete_conversation'}), 'Conversation Closed');
+    assert.doesNotMatch(controls.innerHTML, /View Request/);
+    assert.match(controls.innerHTML, /Start New Conversation/);
+    assert.doesNotMatch(controls.innerHTML, /id="chat-input"/);
+});
+
 test('API starts domains and skips evidence through explicit transactions', async () => {
     const calls = [];
     const sandbox = {
@@ -174,9 +207,9 @@ test('API starts domains and skips evidence through explicit transactions', asyn
     };
     vm.createContext(sandbox);
     vm.runInContext(fs.readFileSync('frontend/js/api.js', 'utf8') + '\nglobalThis.api = API;', sandbox);
-    await sandbox.api.startChatConversation('leave_hr');
+    await sandbox.api.startChatConversation('leave_hr', 'en');
     await sandbox.api.skipChatEvidence('conversation-id');
-    assert.deepEqual(calls[0].body, {domain: 'leave_hr'});
+    assert.deepEqual(calls[0].body, {domain: 'leave_hr', language: 'en'});
     assert.equal(calls[1].url, 'http://test/api/evidence/draft/conversation-id/skip');
     assert.equal(calls[1].body, null);
 });

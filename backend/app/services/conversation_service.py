@@ -11,6 +11,7 @@ from app.config import get_settings
 from app.models.audit import AuditEventType
 from app.models.draft import (
     ConversationDomain,
+    ConversationLanguage,
     ConversationTurn,
     ConversationUIState,
     DraftState,
@@ -26,6 +27,7 @@ from app.services.normalization import (
 )
 from app.services.response_composition import (
     EvidenceResponseContext,
+    IncompleteResponseContext,
     ResponsePlan,
     TerminalResponseContext,
     compose_response,
@@ -50,6 +52,8 @@ REQUEST_DOMAIN = {value: key for key, value in DOMAIN_REQUEST_TYPE.items() if va
 
 def ui_contract(draft):
     if draft.state in {DraftState.CLOSED, DraftState.SUBMITTED}:
+        if draft.terminal and draft.terminal.get("outcome") == "incomplete_conversation":
+            return ConversationUIState.TERMINAL, ["start_new_conversation"]
         return ConversationUIState.TERMINAL, ["view_request", "start_new_conversation"]
     if draft.state in {DraftState.AWAITING_EVIDENCE, DraftState.ATTACHING_EVIDENCE}:
         return ConversationUIState.EVIDENCE_GATE, ["upload_evidence", "skip_evidence"]
@@ -76,12 +80,14 @@ def append_turns(draft, user_message, assistant_message):
     draft.recent_turns = draft.recent_turns[-maximum:]
 
 
-async def start_conversation(db, employee, domain):
+async def start_conversation(db, employee, domain, language):
     domain = ConversationDomain(domain)
+    language = ConversationLanguage(language)
     draft = RequestDraft(
         employee_id=str(employee.id),
         domain=domain,
         request_type=DOMAIN_REQUEST_TYPE[domain],
+        language=language,
     )
     welcome = await compose_response(draft, ResponsePlan(purpose="welcome"))
     append_turns(draft, None, welcome)
@@ -89,7 +95,7 @@ async def start_conversation(db, employee, domain):
     await create_audit_entry(
         db, request_id=None, event_type=AuditEventType.DRAFT_CREATED,
         actor_id=employee.id, actor_role=employee.role.value,
-        details={"draft_id": draft.id, "domain": domain.value},
+        details={"draft_id": draft.id, "domain": domain.value, "language": language.value},
     )
     return response(draft, welcome, response_type="conversation_started")
 
@@ -123,37 +129,31 @@ async def save_draft(db, draft):
 
 
 def closed_error(draft):
+    incomplete = draft.terminal and draft.terminal.get("outcome") == "incomplete_conversation"
+    urdu = draft.language == ConversationLanguage.ROMAN_URDU
     raise HTTPException(409, detail={
         "code": "conversation_closed",
-        "message": "This conversation is complete. Start a new conversation for another task.",
+        "message": (
+            "Yeh conversation band ho chuki hai. Naye kaam ke liye Start New Conversation chunein."
+            if urdu else "This conversation is closed. Start a new conversation for another task."
+        ),
         "ui_state": ConversationUIState.TERMINAL.value,
-        "allowed_actions": ["view_request", "start_new_conversation"],
+        "allowed_actions": ["start_new_conversation"] if incomplete else ["view_request", "start_new_conversation"],
         "terminal": draft.terminal,
     })
 
 
 def evidence_gate_error(draft):
+    urdu = draft.language == ConversationLanguage.ROMAN_URDU
     raise HTTPException(409, detail={
         "code": "evidence_action_required",
-        "message": "Choose Upload Evidence or Skip Evidence to continue.",
+        "message": (
+            "Aage barhne ke liye Upload Evidence ya Skip Evidence chunein."
+            if urdu else "Choose Upload Evidence or Skip Evidence to continue."
+        ),
         "ui_state": ConversationUIState.EVIDENCE_GATE.value,
         "allowed_actions": ["upload_evidence", "skip_evidence"],
     })
-
-
-def update_language(draft, candidate):
-    legacy_language = candidate.__dict__.get("language")
-    signal = candidate.language_signal or legacy_language
-    confidence = candidate.language_confidence or (0.9 if legacy_language else 0)
-    if signal == "mixed":
-        return
-    if not signal:
-        return
-    if draft.language_confidence == 0 or signal == draft.language:
-        if confidence >= 0.75:
-            draft.language, draft.language_confidence = signal, confidence
-    elif confidence >= 0.92:
-        draft.language, draft.language_confidence = signal, confidence
 
 
 async def record_incident(db, draft, employee, candidate, message):
@@ -173,13 +173,12 @@ async def record_incident(db, draft, employee, candidate, message):
 
 def merge_candidates(draft, candidate, message=""):
     """Apply only in-domain, allow-listed candidate facts to the authoritative draft."""
-    update_language(draft, candidate)
     expected = DOMAIN_REQUEST_TYPE[draft.domain]
     if expected is None or candidate.intent in {"policy", "balance", "help", "general"}:
         return
     if candidate.request_type and candidate.request_type != expected:
         return
-    values = {**candidate.facts, **candidate.corrections}
+    values = {**candidate.recovered_facts, **candidate.facts, **candidate.corrections}
     rejected_shapes = [
         key for key, value in values.items()
         if key in FIELDS[expected] and not isinstance(value, (str, int, float, bool))
@@ -291,26 +290,96 @@ def plan(draft):
     return "SUBMIT", None
 
 
-def question_context(draft, field):
-    questions = {
-        "leave_type": ("Would this time off be for illness, vacation, a personal or family matter, or unpaid leave?",
-                       "Yeh chutti bemari, vacation, personal ya family matter, ya unpaid leave ke liye hai?"),
-        "start_date": ("When would you like the leave to begin?", "Chutti kab se shuru karni hai?"),
-        "duration_days": ("How much time off do you need?", "Kitne din ki chutti chahiye?"),
-        "reason": ("What is the reason for the time off?", "Chutti ki wajah kya hai?"),
-        "category": ("What type of expense was this, such as travel, medical, or equipment?",
-                     "Yeh kis qisam ka expense tha, jaise travel, medical ya equipment?"),
-        "amount": ("What amount are you claiming in USD?", "USD mein kitni raqam claim karni hai?"),
-        "description": ("What was the expense for?", "Yeh expense kis liye tha?"),
-        "system_name": ("Which system do you need access to?", "Kis system ka access chahiye?"),
-        "access_level": ("Do you need read, write, or admin access?", "Read, write ya admin access chahiye?"),
-        "justification": ("What work do you need this access for?", "Yeh access kis kaam ke liye chahiye?"),
+def question_context(
+    draft, field, *, attempt=1, employee_message=None,
+    reference_acknowledged=False, purpose="ask",
+):
+    """Describe the unresolved concept; the LLM chooses the ordinary wording."""
+    concepts = {
+        "leave_type": (
+            "Could you describe what the time off is for so I can use the right leave category?",
+            "Meherbani karke batayein chutti kis wajah se chahiye taake sahi category use ho sake.",
+            "The governed request needs one allowed leave category.",
+            "For example, your own health, planned vacation, an urgent family matter, or unpaid time.",
+        ),
+        "start_date": (
+            "Could you please tell me when you would like the leave to start?",
+            "Meherbani karke batayein chutti kab se shuru karni hai.",
+            "A start date is needed to validate the request and calculate working days.",
+            "For example, today, tomorrow, or next Monday.",
+        ),
+        "duration_days": (
+            "Could you please tell me how many working days you expect to be away?",
+            "Meherbani karke batayein kitne working days ki chutti chahiye.",
+            "The working-day duration is needed for policy and balance checks.",
+            "For example, 3 working days; an end date can be given instead.",
+        ),
+        "reason": (
+            "Could you briefly explain the reason for the time off?",
+            "Meherbani karke chutti ki wajah mukhtasar taur par batayein.",
+            "A short employee-provided reason is required for the request.",
+            "A brief explanation in your own words is enough.",
+        ),
+        "category": (
+            "Could you describe the kind of expense you are claiming?",
+            "Meherbani karke batayein yeh kis qisam ka expense hai.",
+            "The expense category determines the applicable reimbursement rules.",
+            "For example, travel, medical, equipment, or another expense.",
+        ),
+        "amount": (
+            "Could you please tell me the amount you are claiming in USD?",
+            "Meherbani karke USD mein claim ki raqam batayein.",
+            "The amount is required for deterministic reimbursement checks.",
+            "For example, USD 60.",
+        ),
+        "description": (
+            "Could you briefly explain what the expense was for?",
+            "Meherbani karke mukhtasar batayein expense kis liye hua tha.",
+            "A short business description is required for the claim.",
+            "For example, a train ride to the client office.",
+        ),
+        "system_name": (
+            "Could you please tell me which system you need access to?",
+            "Meherbani karke batayein kis system ka access chahiye.",
+            "The governed access request must identify its target system.",
+            "For example, GitHub, Jira, or another named system.",
+        ),
+        "access_level": (
+            "Could you please tell me which level of access you need?",
+            "Meherbani karke batayein kis level ka access chahiye.",
+            "The access level is required for the security review path.",
+            "The allowed levels are read, write, and admin.",
+        ),
+        "justification": (
+            "Could you briefly explain what you need this access for?",
+            "Meherbani karke mukhtasar batayein yeh access kis kaam ke liye chahiye.",
+            "A work-related justification is required for the access request.",
+            "For example, the task or issue the access will let you complete.",
+        ),
     }
-    question, urdu = questions.get(field, ("What detail can you provide next?", "Agli detail kya de sakte hain?"))
+    question, urdu, why_needed, example = concepts.get(field, (
+        "Could you please share the remaining detail?",
+        "Meherbani karke baqi detail batayein.",
+        "The request cannot continue safely without this information.",
+        "A short answer in your own words is enough.",
+    ))
     return ResponsePlan(
-        purpose="ask", expected_concept=field, question=question,
-        urdu_question=urdu, known_context=draft.fields,
+        purpose=purpose, expected_concept=field,
+        fallback_question=question, fallback_urdu_question=urdu,
+        known_context=dict(draft.fields), why_needed=why_needed, example=example,
+        clarification_attempt=attempt, prior_question=draft.last_question,
+        employee_message=employee_message,
+        reference_acknowledged=reference_acknowledged,
     )
+
+
+def next_clarification_attempt(draft, concept):
+    previous = draft.clarification_attempts.get(concept, 0)
+    if draft.last_question_field == concept and previous >= 3:
+        return None
+    attempt = previous + 1 if draft.last_question_field == concept else 1
+    draft.clarification_attempts[concept] = attempt
+    return attempt
 
 
 async def policy_answer(db, draft, message):
@@ -340,10 +409,29 @@ async def category_policy_context(db):
     } else []
 
 
+async def turn_policy_context(db, draft, message):
+    """Supply bounded active-policy context for semantic interpretation."""
+    if draft.domain == ConversationDomain.LEAVE_HR and not draft.fields.get("leave_type"):
+        return await category_policy_context(db)
+    if not draft.request_type:
+        return []
+    from app.services.policy_retrieval import PolicyRetrievalStatus, get_policy_retrieval_adapter
+    retrieval = await get_policy_retrieval_adapter().retrieve(
+        db,
+        f"{message} Known request facts: {draft.fields}. Missing: {draft.missing_fields}",
+        top_k=2,
+        category=draft.request_type,
+    )
+    return retrieval.chunks if retrieval.status in {
+        PolicyRetrievalStatus.MATCH, PolicyRetrievalStatus.DEGRADED,
+    } else []
+
+
 def repair_candidate(message, draft, candidate):
     """Supplement provider output with non-conflicting, bounded explicit facts."""
     fallback = development_candidates(message, draft)
     facts = {**fallback.facts, **candidate.facts}
+    recovered_facts = {**fallback.recovered_facts, **candidate.recovered_facts}
     corrections = {**fallback.corrections, **candidate.corrections}
     for corrected_field in candidate.corrections:
         facts.pop(corrected_field, None)
@@ -367,6 +455,7 @@ def repair_candidate(message, draft, candidate):
         "request_type": candidate.request_type or fallback.request_type,
         "requested_domain": candidate.requested_domain or fallback.requested_domain,
         "facts": facts,
+        "recovered_facts": recovered_facts,
         "corrections": corrections,
         "field_sources": {**fallback.field_sources, **candidate.field_sources},
         "inferred_leave_category": fallback_inference,
@@ -376,6 +465,38 @@ def repair_candidate(message, draft, candidate):
         "governance_signal": candidate.governance_signal or fallback.governance_signal,
         "governance_confidence": max(candidate.governance_confidence, fallback.governance_confidence),
         "ambiguities": list(dict.fromkeys([*candidate.ambiguities, *fallback.ambiguities])),
+        "references_prior_context": candidate.references_prior_context or fallback.references_prior_context,
+    })
+
+
+def recover_prior_reference(draft, candidate):
+    """Recover the requested concept from bounded, server-owned employee turns."""
+    if not candidate.references_prior_context or candidate.recovered_facts:
+        return candidate
+    concept = draft.last_question_field or (draft.missing_fields[0] if draft.missing_fields else None)
+    expected = draft.request_type
+    if not concept or not expected or concept not in FIELDS[expected]:
+        return candidate
+    recovered = None
+    for turn in draft.recent_turns:
+        if turn.role != "user":
+            continue
+        prior = development_candidates(turn.content, draft)
+        values = {**prior.facts, **prior.corrections}
+        if concept == "leave_type" and concept not in values and (
+            prior.inferred_leave_category
+            and prior.inference_confidence >= get_settings().category_inference_confidence_threshold
+        ):
+            values[concept] = prior.inferred_leave_category
+        if values.get(concept) not in (None, ""):
+            recovered = values[concept]
+    if recovered is None:
+        return candidate
+    sources = dict(candidate.field_sources)
+    sources[concept] = "recovered"
+    return candidate.model_copy(update={
+        "recovered_facts": {concept: recovered},
+        "field_sources": sources,
     })
 
 
@@ -401,7 +522,11 @@ def preserve_last_required_explanation(message, draft, candidate):
     field = {
         "leave": "reason", "reimbursement": "description", "it_access": "justification",
     }.get(draft.request_type)
-    if not field or draft.fields.get(field) or field in candidate.facts or field in candidate.corrections:
+    if (
+        not field or candidate.references_prior_context or draft.fields.get(field)
+        or field in candidate.facts or field in candidate.recovered_facts
+        or field in candidate.corrections
+    ):
         return candidate
     was_requested = draft.last_question_field == field or draft.missing_fields == [field]
     text = message.strip()
@@ -417,23 +542,53 @@ def preserve_last_required_explanation(message, draft, candidate):
     return candidate.model_copy(update={"facts": facts, "field_sources": sources})
 
 
-async def balance_answer(employee):
+async def balance_answer(employee, language):
     from app.integrations.hrms_mock import get_hrms
     try:
         balance = await get_hrms().get_leave_balance(employee.employee_id)
         if not balance.get("found"):
             raise ValueError("missing")
-        return "Your available leave is " + ", ".join(
-            f"{name}: {data['remaining']:g} days" for name, data in balance["balances"].items()
-        ) + "."
+        values = ", ".join(
+            f"{name}: {data['remaining']:g} {'din' if language == ConversationLanguage.ROMAN_URDU else 'days'}"
+            for name, data in balance["balances"].items()
+        )
+        return (
+            f"Aapki available leave yeh hai: {values}."
+            if language == ConversationLanguage.ROMAN_URDU
+            else f"Your available leave is {values}."
+        )
     except Exception:
-        return "I couldn't retrieve your leave balance right now. Please try again."
+        return (
+            "Aapki leave balance abhi hasil nahi ho saki. Dobara koshish karein."
+            if language == ConversationLanguage.ROMAN_URDU
+            else "I couldn't retrieve your leave balance right now. Please try again."
+        )
 
 
 async def save_conversational_response(db, draft, user_message, message, **kwargs):
     append_turns(draft, user_message, message)
     await save_draft(db, draft)
     return response(draft, message, **kwargs)
+
+
+async def close_incomplete_conversation(db, draft, user_message, concept):
+    """Close after three unsuccessful clarifications without creating a request."""
+    terminal = TerminalResult(
+        outcome="incomplete_conversation", missing_concept=concept,
+    )
+    draft.state = DraftState.CLOSED
+    draft.terminal = terminal.model_dump(mode="json")
+    message = await compose_response(draft, ResponsePlan(
+        purpose="incomplete_conversation",
+        employee_message=user_message,
+        known_context=dict(draft.fields),
+        incomplete=IncompleteResponseContext(missing_concept=concept),
+    ))
+    append_turns(draft, user_message, message)
+    await save_draft(db, draft)
+    return response(
+        draft, message, response_type="conversation_incomplete", terminal=terminal,
+    )
 
 
 def terminal_from_request(request):
@@ -609,9 +764,7 @@ async def handle_message(db, employee, payload):
         })
 
     message = payload.message.strip()
-    policy_chunks = []
-    if draft.domain == ConversationDomain.LEAVE_HR and not draft.fields.get("leave_type"):
-        policy_chunks = await category_policy_context(db)
+    policy_chunks = await turn_policy_context(db, draft, message)
     try:
         candidate = await extract_candidates(message, draft, policy_chunks)
     except Exception:
@@ -619,47 +772,67 @@ async def handle_message(db, employee, payload):
         candidate = development_candidates(message, draft)
     else:
         candidate = repair_candidate(message, draft, candidate)
+    candidate = recover_prior_reference(draft, candidate)
     candidate = enforce_date_ambiguity(message, draft, candidate)
     candidate = preserve_last_required_explanation(message, draft, candidate)
-    update_language(draft, candidate)
     await record_incident(db, draft, employee, candidate, message)
 
     if candidate.intent in {"policy", "request_policy"} or draft.domain == ConversationDomain.POLICIES_GENERAL:
         if candidate.intent == "request_policy":
             merge_candidates(draft, candidate, message)
         answer, retrieval_mode, _ = await policy_answer(db, draft, message)
-        composed = await compose_response(draft, ResponsePlan(
-            purpose="policy", answer=answer, draft_preserved=bool(draft.fields),
-        ))
+        resume = draft.ambiguous_fields[0] if draft.ambiguous_fields else (
+            draft.missing_fields[0] if draft.missing_fields else None
+        )
+        response_plan = question_context(
+            draft, resume, employee_message=message, purpose="policy",
+        ) if resume else ResponsePlan(purpose="policy", employee_message=message)
+        response_plan = response_plan.model_copy(update={
+            "answer": answer, "draft_preserved": bool(draft.fields),
+            "resume_concept": resume,
+        })
+        composed = await compose_response(draft, response_plan)
         return await save_conversational_response(
             db, draft, message, composed, response_type="policy_info",
             retrieval_mode=retrieval_mode,
         )
     if candidate.intent == "balance":
-        answer = await balance_answer(employee)
-        composed = await compose_response(draft, ResponsePlan(
-            purpose="balance", answer=answer, draft_preserved=bool(draft.fields),
-        ))
+        answer = await balance_answer(employee, draft.language)
+        resume = draft.ambiguous_fields[0] if draft.ambiguous_fields else (
+            draft.missing_fields[0] if draft.missing_fields else None
+        )
+        response_plan = question_context(
+            draft, resume, employee_message=message, purpose="balance",
+        ) if resume else ResponsePlan(purpose="balance", employee_message=message)
+        response_plan = response_plan.model_copy(update={
+            "answer": answer, "draft_preserved": bool(draft.fields),
+            "resume_concept": resume,
+        })
+        composed = await compose_response(draft, response_plan)
         return await save_conversational_response(
             db, draft, message, composed, response_type="policy_info"
         )
     if candidate.intent == "help":
         field = draft.missing_fields[0] if draft.missing_fields else None
-        question_plan = question_context(draft, field) if field else None
-        guidance = (
-            "Tell me the part you know in your own words. "
-            + (question_plan.question if question_plan else "I can explain the next step.")
-        )
-        urdu_guidance = (
-            "Jo detail aap jaante hain apne alfaaz mein bata dein. "
-            + (question_plan.urdu_question if question_plan else "Main agla step samjha deta hoon.")
-        )
-        composed = await compose_response(draft, ResponsePlan(
-            purpose="help", expected_concept=field,
-            question=question_plan.question if question_plan else None,
-            urdu_question=question_plan.urdu_question if question_plan else None,
-            known_context=draft.fields, guidance=guidance, urdu_guidance=urdu_guidance,
-        ))
+        if field:
+            attempt = next_clarification_attempt(draft, field)
+            if attempt is None:
+                return await close_incomplete_conversation(db, draft, message, field)
+            response_plan = question_context(
+                draft, field, attempt=attempt, employee_message=message,
+                reference_acknowledged=candidate.references_prior_context,
+                purpose="help",
+            )
+        else:
+            response_plan = ResponsePlan(purpose="help", employee_message=message)
+        response_plan = response_plan.model_copy(update={
+            "guidance": "I understand the confusion. I will summarize what is already known and explain the one detail still needed.",
+            "urdu_guidance": "Main aapki pareshani samajhta hoon. Jo maloomat maujood hai usay rakh kar sirf baqi zaroori detail wazeh karta hoon.",
+        })
+        composed = await compose_response(draft, response_plan)
+        if field:
+            draft.last_question = composed
+            draft.last_question_field = field
         return await save_conversational_response(
             db, draft, message, composed, response_type="chat"
         )
@@ -668,7 +841,7 @@ async def handle_message(db, employee, payload):
     if expected_domain and expected_domain != draft.domain:
         composed = await compose_response(draft, ResponsePlan(
             purpose="out_of_domain", current_domain=DOMAIN_LABELS[draft.domain],
-            requested_domain=DOMAIN_LABELS[expected_domain],
+            requested_domain=DOMAIN_LABELS[expected_domain], employee_message=message,
         ))
         return await save_conversational_response(
             db, draft, message, composed, response_type="chat"
@@ -688,14 +861,38 @@ async def handle_message(db, employee, payload):
         "HELP": "help",
         "GENERAL": "general",
     }[action]
+    clarification_concept = detail if action == "ASK" else (
+        "start_date" if action in {
+            "AMBIGUOUS_DATE", "INVALID_DATE", "PAST_DATE", "DATE_CONFLICT",
+        } else None
+    )
+    if clarification_concept:
+        attempt = next_clarification_attempt(draft, clarification_concept)
+        if attempt is None:
+            return await close_incomplete_conversation(
+                db, draft, message, clarification_concept,
+            )
+    else:
+        attempt = None
+    reference_acknowledged = bool(
+        candidate.references_prior_context and (candidate.recovered_facts or draft.fields)
+    )
     if action == "ASK":
-        response_plan = question_context(draft, detail)
+        response_plan = question_context(
+            draft, detail, attempt=attempt, employee_message=message,
+            reference_acknowledged=reference_acknowledged,
+        )
     elif action == "EVIDENCE_GATE":
         response_plan = ResponsePlan(purpose=purpose, evidence=EvidenceResponseContext(
             category=draft.fields["leave_type"], duration_days=draft.fields["duration_days"],
         ))
     else:
-        response_plan = ResponsePlan(purpose=purpose, known_context=draft.fields)
+        response_plan = ResponsePlan(
+            purpose=purpose, expected_concept=clarification_concept,
+            known_context=dict(draft.fields), clarification_attempt=attempt,
+            prior_question=draft.last_question, employee_message=message,
+            reference_acknowledged=reference_acknowledged,
+        )
     composed = await compose_response(draft, response_plan)
     if action in {"ASK", "AMBIGUOUS_DATE", "INVALID_DATE", "PAST_DATE", "DATE_CONFLICT"}:
         draft.last_question = composed

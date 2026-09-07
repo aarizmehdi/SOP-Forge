@@ -18,14 +18,16 @@ from fastapi import HTTPException, UploadFile
 from starlette.datastructures import Headers
 
 from app.config import get_settings
-from app.models.draft import ConversationDomain, RequestDraft
+from app.models.draft import (
+    ConversationDomain, ConversationLanguage, ConversationTurn, RequestDraft,
+)
 from app.models.request import Decision, RequestStatus, SOPRequest
 from app.models.user import User, UserRole
 from app.schemas.request import AssistantChatRequest, RequestSubmission
 from app.services.candidate_extraction import Candidates, development_candidates
 from app.services.conversation_service import (
-    handle_message, merge_candidates, plan, repair_candidate, start_conversation,
-    status_message,
+    handle_message, merge_candidates, plan, recover_prior_reference,
+    repair_candidate, start_conversation, status_message,
 )
 from app.services.normalization import (
     normalize_leave_dates, normalize_submission, working_days_inclusive,
@@ -76,8 +78,11 @@ class RuntimeCase(unittest.IsolatedAsyncioTestCase):
             "embedding": [], "metadata": {"document_title": "Leave SOP", "category": "leave"}})
         self.id = None
 
-    async def begin(self, domain=ConversationDomain.LEAVE_HR):
-        result = await start_conversation(self.db, self.employee, domain)
+    async def begin(
+        self, domain=ConversationDomain.LEAVE_HR,
+        language=ConversationLanguage.ENGLISH,
+    ):
+        result = await start_conversation(self.db, self.employee, domain, language)
         self.id = result.conversation_id
         return result
 
@@ -372,7 +377,13 @@ class RuntimeCase(unittest.IsolatedAsyncioTestCase):
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
             missing_session = await client.post('/api/request/assistant', json={"message": "I have fever"})
             self.assertEqual(missing_session.status_code, 422)
-            started = await client.post('/api/request/assistant/start', json={"domain": "leave_hr"})
+            missing_language = await client.post(
+                '/api/request/assistant/start', json={"domain": "leave_hr"},
+            )
+            self.assertEqual(missing_language.status_code, 422)
+            started = await client.post('/api/request/assistant/start', json={
+                "domain": "leave_hr", "language": "en",
+            })
             self.assertEqual(started.status_code, 201, started.text)
             self.assertEqual(started.json()["ui_state"], "ACTIVE_CHAT")
             result = await client.post('/api/request/assistant', json={
@@ -624,7 +635,7 @@ class RuntimeCase(unittest.IsolatedAsyncioTestCase):
         first = await self.say("I need leave.")
         second = await self.say("What should I do?")
         self.assertNotEqual(first.message, second.message)
-        self.assertIn("own words", second.message)
+        self.assertRegex(second.message.lower(), r"leave|time off")
         self.assertEqual(len(self.db.sop_requests.docs), 0)
 
     async def test_v2_i_language_stable_after_profanity(self):
@@ -683,7 +694,10 @@ class RuntimeCase(unittest.IsolatedAsyncioTestCase):
     async def test_v2_p_new_domain_selection_creates_new_id(self):
         first = await self.begin(ConversationDomain.LEAVE_HR)
         first_id = first.conversation_id
-        second = await start_conversation(self.db, self.employee, ConversationDomain.IT_SYSTEM_ACCESS)
+        second = await start_conversation(
+            self.db, self.employee, ConversationDomain.IT_SYSTEM_ACCESS,
+            ConversationLanguage.ENGLISH,
+        )
         self.assertNotEqual(first_id, second.conversation_id)
         self.assertEqual(second.ui_state.value, "ACTIVE_CHAT")
         self.assertEqual(len(self.db.request_drafts.docs), 2)
@@ -696,7 +710,7 @@ class RuntimeCase(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone((await self.draft())["request_type"])
 
     async def test_v2_recent_history_is_server_bounded(self):
-        await self.begin()
+        await self.begin(ConversationDomain.POLICIES_GENERAL)
         for index in range(get_settings().conversation_history_turns + 3):
             await self.say(f"general note {index}")
         self.assertLessEqual(
@@ -707,7 +721,7 @@ class RuntimeCase(unittest.IsolatedAsyncioTestCase):
     async def test_v2_composer_cannot_leak_tokens_or_contradict_terminal(self):
         ask_plan = ResponsePlan(
             purpose="ask", expected_concept="start_date",
-            question="When should leave begin?", known_context={"leave_type": "sick"},
+            fallback_question="When should leave begin?", known_context={"leave_type": "sick"},
         )
         routed_plan = ResponsePlan(
             purpose="terminal",
@@ -775,7 +789,7 @@ class RuntimeCase(unittest.IsolatedAsyncioTestCase):
         draft = await self.draft()
         self.assertEqual(draft["fields"]["leave_type"], "sick")
         self.assertIn("fractured my ankle", draft["fields"]["reason"].lower())
-        self.assertIn("begin", result.message.lower())
+        self.assertRegex(result.message.lower(), r"begin|start")
         self.assertNotIn("reason", result.message.lower())
 
     async def test_v2_typo_tolerant_natural_date_range_uses_working_days(self):
@@ -819,10 +833,19 @@ class RuntimeCase(unittest.IsolatedAsyncioTestCase):
         ))
         duration = ResponsePlan(
             purpose="ask", expected_concept="duration_days",
-            question="How much time off do you need?", known_context={"leave_type": "sick"},
+            fallback_question="How much time off do you need?", known_context={"leave_type": "sick"},
         )
         self.assertTrue(is_safe_composition("How many working days do you need?", duration))
         self.assertFalse(is_safe_composition("When should the leave begin?", duration))
+        roman_duration = duration.model_copy(update={"output_language": "roman_urdu"})
+        self.assertTrue(is_safe_composition(
+            "Meherbani karke batayein kitne working days ki chutti chahiye?",
+            roman_duration,
+        ))
+        self.assertFalse(is_safe_composition(
+            "English: How many days?\nRoman Urdu: Kitne din chahiye?",
+            duration,
+        ))
 
     async def test_v2_terminal_validation_rejects_promises_and_chat_invites(self):
         terminal = ResponsePlan(
@@ -861,6 +884,89 @@ class RuntimeCase(unittest.IsolatedAsyncioTestCase):
         result = await dmn_rule_engine(state)
         self.assertEqual(result["decision"], "approved")
         self.assertIn("3 requested day", result["evaluation_reasoning"])
+
+    async def test_selected_output_language_is_immutable_across_input_languages(self):
+        await self.begin(language=ConversationLanguage.ENGLISH)
+        english = await self.say("Mujhe chutti chahiye, meri tabiyat kharab hai")
+        self.assertEqual((await self.draft())["language"], "en")
+        self.assertNotRegex(english.message.lower(), r"\b(?:aap|batayein|chahiye)\b")
+
+        await self.begin(language=ConversationLanguage.ROMAN_URDU)
+        roman = await self.say("I need leave for a personal matter")
+        self.assertEqual((await self.draft())["language"], "roman_urdu")
+        self.assertRegex(roman.message.lower(), r"\b(?:aap|batayein|chutti|liye)\b")
+
+    async def test_model_language_signal_cannot_change_selected_language(self):
+        await self.begin(language=ConversationLanguage.ROMAN_URDU)
+        model = Candidates(
+            intent="request", request_type="leave", language_signal="en",
+            language_confidence=1, language="en",
+        )
+        with patch(
+            "app.services.conversation_service.extract_candidates",
+            new=AsyncMock(return_value=model),
+        ):
+            result = await self.say("I need some time off")
+        self.assertEqual((await self.draft())["language"], "roman_urdu")
+        self.assertRegex(result.message.lower(), r"\b(?:aap|batayein|chutti|liye)\b")
+
+    async def test_holistic_model_candidate_uses_all_facts_without_reasking(self):
+        await self.begin(ConversationDomain.IT_SYSTEM_ACCESS)
+        model = Candidates(
+            intent="request", request_type="it_access",
+            facts={
+                "system_name": "GitHub", "access_level": "admin",
+                "justification": "fix the current domain verification issue",
+            },
+        )
+        with patch(
+            "app.services.conversation_service.extract_candidates",
+            new=AsyncMock(return_value=model),
+        ):
+            result = await self.say(
+                "I need GitHub admin access because I have to fix the current domain verification issue"
+            )
+        self.assertIsNotNone(result.request_details)
+        self.assertEqual(result.ui_state.value, "TERMINAL")
+        self.assertEqual(
+            result.request_details.submitted_data["justification"],
+            "fix the current domain verification issue",
+        )
+
+    async def test_reference_recovery_uses_prior_employee_turn_not_reference_phrase(self):
+        draft = RequestDraft(
+            employee_id="e", domain=ConversationDomain.LEAVE_HR,
+            request_type="leave", missing_fields=["reason"],
+            last_question_field="reason",
+            recent_turns=[ConversationTurn(role="user", content="I have fever")],
+        )
+        recovered = recover_prior_reference(
+            draft,
+            Candidates(
+                intent="request", request_type="leave",
+                references_prior_context=True,
+            ),
+        )
+        self.assertEqual(recovered.recovered_facts["reason"], "i have fever")
+        merge_candidates(draft, recovered, "I already told you above")
+        self.assertEqual(draft.fields["reason"], "i have fever")
+        self.assertNotIn("already told", draft.fields["reason"])
+
+    async def test_three_clarifications_then_incomplete_terminal_without_request(self):
+        first = await self.say("I need leave")
+        second = await self.say("bro what")
+        third = await self.say("this is annoying")
+        closed = await self.say("I still do not understand")
+        self.assertEqual(len({first.message, second.message, third.message}), 3)
+        self.assertEqual(closed.response_type, "conversation_incomplete")
+        self.assertEqual(closed.ui_state.value, "TERMINAL")
+        self.assertEqual(closed.terminal.outcome, "incomplete_conversation")
+        self.assertIsNone(closed.terminal.request_id)
+        self.assertEqual(closed.allowed_actions, ["start_new_conversation"])
+        self.assertEqual(len(self.db.sop_requests.docs), 0)
+        with self.assertRaises(HTTPException) as error:
+            await self.say("one more try")
+        self.assertEqual(error.exception.detail["code"], "conversation_closed")
 
 
 if __name__ == '__main__':

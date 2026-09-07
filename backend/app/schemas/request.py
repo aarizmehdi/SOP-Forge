@@ -10,7 +10,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 
 from app.models.request import Decision, RequestStatus, RequestType
-from app.models.draft import ConversationDomain, ConversationUIState
+from app.models.draft import ConversationDomain, ConversationLanguage, ConversationUIState
 
 
 # ── Submission ──
@@ -122,13 +122,26 @@ class RequestStatusResponse(BaseModel):
 class ConversationStartRequest(BaseModel):
     model_config = {"extra": "forbid"}
     domain: ConversationDomain
+    language: ConversationLanguage
 
 
 class TerminalResult(BaseModel):
-    request_id: UUID
-    status: RequestStatus
-    decision: Decision
+    outcome: Literal["request_result", "incomplete_conversation"] = "request_result"
+    request_id: UUID | None = None
+    status: RequestStatus | None = None
+    decision: Decision | None = None
     destination: Literal["manager_review", "human_review"] | None = None
+    missing_concept: str | None = None
+
+    @model_validator(mode="after")
+    def validate_outcome(self):
+        request_fields = (self.request_id, self.status, self.decision)
+        if self.outcome == "request_result" and any(value is None for value in request_fields):
+            raise ValueError("A request result requires request ID, status, and decision.")
+        if self.outcome == "incomplete_conversation":
+            if any(value is not None for value in request_fields) or not self.missing_concept:
+                raise ValueError("An incomplete conversation identifies only its missing concept.")
+        return self
 
 
 class AssistantChatRequest(BaseModel):
@@ -141,7 +154,9 @@ class AssistantChatRequest(BaseModel):
 
 class AssistantChatResponse(BaseModel):
     """Response from conversational AI assistant."""
-    response_type: str = Field(..., description="chat | request_processed | policy_info")
+    response_type: str = Field(
+        ..., description="chat | request_processed | policy_info | conversation_incomplete",
+    )
     message: str
     request_details: RequestResponse | None = None
     conversation_id: str | None = None

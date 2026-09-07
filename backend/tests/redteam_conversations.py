@@ -20,7 +20,7 @@ from starlette.datastructures import Headers
 
 from app.config import get_settings
 from app.schemas.request import AssistantChatRequest
-from app.models.draft import ConversationDomain
+from app.models.draft import ConversationDomain, ConversationLanguage
 from app.services.conversation_service import handle_message, skip_evidence, start_conversation
 from tests.test_conversation_engine import RuntimeCase
 
@@ -72,14 +72,14 @@ CASES = [
 CONCEPT_PATTERNS = {
     "leave_type": r"illness|vacation|personal|family matter|unpaid|type of leave|category|bemari",
     "start_date": r"when.*(?:begin|start)|start date|which date|what date|specific date|kab se",
-    "duration_days": r"how long|how much time|how many(?: working)? days|number of days|duration|kitne din",
+    "duration_days": r"how long|how much time|how many(?: working)? days|number of days|duration|kitne(?: working)? (?:din|days)",
     "reason": r"what.*reason|why.*(?:leave|time off)|reason for|wajah",
-    "category": r"type of expense|expense category|kis qisam.*expense",
+    "category": r"type of expense|kind of expense|expense category|kis qisam.*expense",
     "amount": r"what amount|how much.*claim|amount.*claim|kitni raqam",
-    "description": r"what.*expense for|describe.*expense|expense.*kis liye",
+    "description": r"what.*expense.*for|describe.*expense|expense.*kis liye",
     "system_name": r"which system|what system|kis system",
     "access_level": r"what access|which access|read,? write|admin access|access level",
-    "justification": r"what work|why.*access|access.*kis kaam",
+    "justification": r"what work|why.*access|what.*access.*for|access.*kis kaam",
 }
 
 
@@ -194,7 +194,13 @@ async def run(args):
 
     async def conversation(index, title, domain, turns, expected):
         async with semaphore:
-            started = await start_conversation(case.db, case.employee, ConversationDomain(domain))
+            language = (
+                ConversationLanguage.ROMAN_URDU
+                if "Roman Urdu" in title else ConversationLanguage.ENGLISH
+            )
+            started = await start_conversation(
+                case.db, case.employee, ConversationDomain(domain), language,
+            )
             cid, transcript, result, error_code = started.conversation_id, [], started, None
             try:
                 for text in turns:

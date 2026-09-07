@@ -1104,6 +1104,19 @@ code {
     margin-bottom: 20px;
 }
 
+.ca-step-label {
+    margin: -10px 0 10px;
+    color: #10b981;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+#ca-language-choices + .btn-ghost {
+    margin-top: 18px;
+}
+
 .ca-hero-title {
     font-size: 28px;
     font-weight: 700;

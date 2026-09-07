@@ -211,4 +211,4 @@ async def start_assistant_conversation(
     current_user: User = Depends(require_employee),
 ):
     from app.services.conversation_service import start_conversation
-    return await start_conversation(db, current_user, payload.domain)
+    return await start_conversation(db, current_user, payload.domain, payload.language)

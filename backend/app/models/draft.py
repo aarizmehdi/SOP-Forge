@@ -23,6 +23,11 @@ class ConversationDomain(str, Enum):
     POLICIES_GENERAL = "policies_general"
 
 
+class ConversationLanguage(str, Enum):
+    ENGLISH = "en"
+    ROMAN_URDU = "roman_urdu"
+
+
 class ConversationUIState(str, Enum):
     ACTIVE_CHAT = "ACTIVE_CHAT"
     EVIDENCE_GATE = "EVIDENCE_GATE"
@@ -47,14 +52,15 @@ class RequestDraft(BaseModel):
     missing_fields: list[str] = Field(default_factory=list)
     ambiguous_fields: list[str] = Field(default_factory=list)
     state: DraftState = DraftState.COLLECTING
-    language: str = "en"
+    language: ConversationLanguage = ConversationLanguage.ENGLISH
     revision: int = 0
     request_id: str | None = None
     preflight: dict = Field(default_factory=dict)
     last_question: str | None = None
     last_question_field: str | None = None
+    clarification_attempts: dict[str, int] = Field(default_factory=dict)
     recent_turns: list[ConversationTurn] = Field(default_factory=list)
-    language_confidence: float = 0.0
+    language_confidence: float = Field(default=1.0, deprecated=True)
     terminal: dict | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

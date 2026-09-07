@@ -16,15 +16,16 @@ The conversation layer has two responsibilities.
 
 - conversational intent;
 - explicit facts and explicit corrections;
+- facts recovered from conversational references to prior server-owned employee turns;
 - policy, balance, help, explanation, and in-domain general-question signals;
 - a proposed request type within the selected domain;
 - an inferred leave category, its confidence, and whether each material value was explicit or inferred;
-- language and confidence signals;
+- input-language signals used only to improve understanding;
 - a typed governance or security concern and confidence.
 
 It cannot assert identity, approval, rejection, routing, balances, permissions, evidence existence, manager approval, or executable policy results. Model values outside server-approved fields and taxonomies are discarded. A configurable confidence threshold controls whether an inferred material category is accepted.
 
-**Response composition** receives a typed, authoritative server response plan after validation, retrieval, and any DMN execution. `ASK` identifies the exact unresolved business concept and known facts. `EVIDENCE_GATE` contains the category, working-day duration, evidence requirement, and the two available actions. `TERMINAL` contains the result, destination, and terminal actions. Purpose-specific validators reject prose that asks the wrong question, re-asks known information, contradicts state, omits evidence actions, exposes a UUID, invites more terminal chat, or promises unsupported follow-up. Invalid output is discarded and replaced with deterministic wording. Welcome and collection replies are normally limited to one or two concise sentences; policy and help replies may be longer when the question needs explanation.
+**Response composition** receives a typed, authoritative server response plan after validation, retrieval, and any DMN execution. The plan includes the immutable output language, domain persona, latest employee message, known facts, unresolved concept, why the concept is needed, clarification attempt, prior question, and any side-question answer. The model chooses natural professional wording within that plan. `EVIDENCE_GATE` contains the category, working-day duration, evidence requirement, and the two available actions. Request `TERMINAL` contains the result, destination, and terminal actions. `incomplete_conversation` contains the unresolved concept and only the new-conversation action. Purpose-specific validators reject prose that uses the wrong output language, asks the wrong question, re-asks known information, repeats a prior clarification verbatim, contradicts state, omits evidence actions, exposes a UUID, invites more terminal chat, or promises unsupported follow-up. Invalid output is discarded and replaced with deterministic provider-failure wording.
 
 ### Server and Python
 
@@ -35,13 +36,13 @@ The server owns:
 - the authoritative `RequestDraft` fields and validated dates;
 - bounded recent conversational turns;
 - field completeness and ambiguity;
-- stable language selection;
+- the employee's immutable selected output language;
 - evidence existence confirmed from persistence;
 - evidence-gate and terminal transitions;
 - authorization, concurrency control, and request identifiers;
 - typed incidents recorded independently from normal requests.
 
-The browser sends only the current message and the employee-owned `conversation_id` after a domain has been selected. Browser transcripts are not accepted as business authority.
+The browser sends the selected domain and language once to create a conversation. Afterward it sends only the current message and employee-owned `conversation_id`. Browser transcripts and later language signals are not accepted as business authority.
 
 ### DMN workflow
 
@@ -60,32 +61,52 @@ The client begins in `DOMAIN_SELECTION`, shows exactly these choices, and does n
 - IT & System Access
 - Policies & General
 
-Selecting a domain calls an authenticated start endpoint. The server creates a new owned conversation, persists the immutable domain, and returns its `conversation_id` in `ACTIVE_CHAT`. Leave, expense, and IT domains can create only their corresponding request type. The policies domain answers organizational questions and never creates a request. A request for another domain produces guidance to start a new conversation; it never mutates the current scope.
+Selecting a domain advances to `LANGUAGE_SELECTION`; it does not create a server conversation. The employee must then choose exactly one output language:
+
+- English (`en`)
+- Roman Urdu in Latin script (`roman_urdu`)
+
+Only the second selection calls the authenticated start endpoint. The server creates a new owned conversation and persists both the immutable domain and immutable output language. English conversations always produce English assistant replies, even when the employee writes in Roman Urdu, mixed language, slang, or another language. Roman Urdu conversations always produce Roman Urdu replies, even when the employee writes in English. The assistant never emits duplicate English and Roman Urdu versions. Input-language detection can help interpretation but cannot mutate the selected output language.
+
+Leave, expense, and IT domains can create only their corresponding request type. The policies domain answers organizational questions and never creates a request. A request for another domain produces guidance to start a new conversation; it never mutates the current scope.
 
 The authoritative UI states are:
 
 | State | Available controls | Server behavior |
 | --- | --- | --- |
 | `DOMAIN_SELECTION` | Four domain choices | No draft business flow exists yet. |
+| `LANGUAGE_SELECTION` | English and Roman Urdu choices | No server conversation exists yet. |
 | `ACTIVE_CHAT` | Transcript, text composer, microphone, send | Interpret the latest turn, preserve the bounded transcript, validate facts, answer side questions, and collect a complete draft. |
 | `EVIDENCE_GATE` | Transcript, `Upload Evidence`, `Skip Evidence` | Reject ordinary chat; accept only the authenticated upload or skip transaction. |
-| `TERMINAL` | Transcript, authoritative result, `View Request`, `Start New Conversation` | Reject further chat with a typed closed-conversation error. |
+| `TERMINAL` | Request result: `View Request` and `Start New Conversation`; incomplete conversation: `Start New Conversation` only | Reject further chat with a typed closed-conversation error. |
 
-One conversation represents one task. Approval, rejection, routing, submission with evidence, and submission without evidence close it. The response includes typed UI state, allowed actions, and structured terminal data containing request ID, status, decision, and review destination when known. The frontend renders the status title from that authoritative data. A model-written body may explain the result but cannot change it.
+One conversation represents one task. Approval, rejection, routing, submission with evidence, submission without evidence, and exhaustion of three clarification attempts close it. A request terminal response contains request ID, status, decision, and review destination. An `incomplete_conversation` terminal response contains no request identity or decision because no SOP request is created. The frontend renders the title and actions from that authoritative data. A model-written body may explain the result but cannot change it.
 
-Starting over clears the client session and returns to `DOMAIN_SELECTION`; choosing a domain then creates a fresh server draft and identifier.
+Starting over clears the client session and returns to `DOMAIN_SELECTION`; choosing a department and language then creates a fresh server draft and identifier.
 
 ## Request collection
 
-The server supplies the model with the selected domain, allowed field names and enum values, organization date, a compact draft summary, the last unresolved need, relevant policy excerpts when needed, and a bounded recent history. Structured draft fields remain the business memory. Recent turns provide conversational reference and prevent blind repetition.
+The server supplies the model with the selected domain, locked output language, authenticated-employee context, allowed actions, lifecycle state, allowed field names and enum values, organization date, complete known and missing draft facts, the last requested concept, clarification counts, active policy excerpts, and bounded server-owned recent turns. Structured draft fields remain the business memory. Recent turns provide conversational reference and prevent blind repetition.
+
+Turn understanding is semantic and holistic. Every employee message is evaluated for all useful facts, even when it also answers a side question or supplies information beyond the current requested concept. One sentence can therefore supply a request category, dates, duration, reason, amount, system, access level, and justification as applicable. The employee does not need to use backend field names or enum labels. Misspellings, indirect phrasing, English, Roman Urdu, mixed-language input, and slang are interpretation concerns for the model, while server schemas remain the acceptance boundary.
 
 Explicit facts and corrections are applied only after field-family, taxonomy, and type validation. Provider output and the bounded deterministic parser are repaired field by field: non-conflicting explicit parser facts supplement omitted model fields, while an explicit model correction wins for the corrected field. A partial model result therefore cannot erase an explicit duration, date, amount, system name, or other independently bounded fact.
 
-Obvious leave categories may be inferred within `annual`, `sick`, `casual`, and `unpaid`. The server accepts an inferred category only at or above `CATEGORY_INFERENCE_CONFIDENCE_THRESHOLD`; otherwise it asks a contextual clarification. The active policy defines the employee's own illness, injury, medical recovery, and appointments as sick leave, so a clear broken leg or fractured ankle is a strong sick-leave candidate. A relative's medical event remains a casual-leave candidate under the active policy. The turn-understanding contract preserves the employee's free-form explanation, and a generic server safety rule retains a substantive answer when `reason`, expense `description`, or access `justification` is the last requested required field.
+Obvious leave categories may be inferred within `annual`, `sick`, `casual`, and `unpaid`. The server accepts an inferred category only at or above `CATEGORY_INFERENCE_CONFIDENCE_THRESHOLD`; otherwise it asks a contextual clarification. The active policy defines the employee's own illness, injury, medical recovery, and appointments as sick leave, so a clear illness, doctor's rest instruction, broken leg, or fractured ankle is a strong sick-leave candidate. A relative's medical event remains a casual-leave candidate under the active policy. The turn-understanding contract preserves the employee's free-form explanation, and a generic server safety rule retains a substantive answer when `reason`, expense `description`, or access `justification` is the last requested required field.
 
-Policy, balance, help, and explanation questions interrupt collection without changing or submitting the draft. The assistant answers the question, preserves all collected fields, and then offers contextual guidance toward the unresolved information. Confusion and frustration produce a new helpful explanation instead of repeating an identical prompt. Profanity alone does not change the session language or create an incident.
+Conversational references are resolved against bounded server-owned employee turns. The model returns separately typed `recovered_facts` and a reference flag; a bounded server fallback can recover the last requested concept from prior turns when the provider is unavailable. Reference phrases such as “I already told you” and “same reason” are never persisted as the reason, description, or justification. Corrections still take precedence over recovered and earlier facts.
 
-Language is selected from meaningful content and retained unless the employee explicitly asks to switch or sustained high-confidence evidence supports a switch. English, Roman Urdu, and reasonable code-switching are supported.
+Policy, balance, help, and explanation questions interrupt collection without changing or submitting the draft. The assistant answers first, preserves all collected fields, and resumes the unresolved concept with context-aware wording. Confusion and frustration produce a respectful explanation of what is already known and what is still needed. Profanity alone does not change the session language or create an incident.
+
+### Clarification and anti-loop behavior
+
+The server tracks clarification attempts by business concept. After every employee reply, turn understanding, recovered context, accepted inference, corrections, and draft validation run before any follow-up question is chosen. A semantically sufficient answer advances immediately.
+
+For a genuinely unresolved concept, attempt one asks naturally. Attempt two explains more clearly what is needed and why, with an example when useful. Attempt three gives a final concise clarification. The composer receives the prior question and may not repeat it verbatim. If the next employee turn still does not supply usable information, the server closes the draft as `incomplete_conversation`, creates no SOP request, and exposes only `Start New Conversation`. Further messages on that conversation ID are rejected by the existing closed-conversation boundary.
+
+### Professional personas
+
+Response composition uses a domain-specific professional role: an HR and leave specialist, finance operations specialist, IT access specialist, or organizational policy specialist. Replies must remain respectful, calm, courteous, patient, clear, helpful, and context-aware. They must not mirror profanity, become argumentative, or expose parser and planner mechanics. The model controls normal phrasing; deterministic sentences are reserved for provider failure or invalid model output.
 
 ## Date handling
 
@@ -121,40 +142,36 @@ V2 is accepted when all of the following are verified:
 3. A side policy, balance, help, or explanation question preserves draft facts, answers the question, and resumes useful collection.
 4. Server-owned bounded history supports references and varied guidance while browser-supplied history is absent from the authoritative contract.
 5. Natural English and Roman Urdu dates resolve correctly; ambiguous numeric dates receive natural clarification; past dates are stopped before submission without exposing internal tokens or ISO instructions.
-6. Meaningful language signals remain stable across isolated slang or profanity.
+6. Domain selection is followed by required language selection; no conversation starts before both are selected, and every reply obeys the immutable English or Roman Urdu output choice regardless of input language.
 7. Governance manipulation can create a typed incident while the legitimate request continues; ordinary frustration does not create one.
 8. Evidence-required drafts expose only upload and skip actions. Failed uploads remain gated. Successful upload and explicit skip each produce one governed request and close the conversation.
 9. Closed conversations reject later text with a typed closed response or error and never replay an earlier approval or routing message.
-10. Terminal responses expose authoritative status, decision, request ID, destination, UI state, and allowed actions; the frontend renders a deterministic status title.
+10. Request terminal responses expose authoritative status, decision, request ID, destination, UI state, and allowed actions; incomplete terminal responses expose no request result and only allow a new conversation.
 11. The standard `/api/request/submit` form path still validates and executes through the existing request schemas and DMN workflow.
 12. Existing ownership, authorization, attachment security, lifecycle serialization, failure recovery, audit, retrieval-status, and concurrency regressions continue to pass.
 13. Permanent backend and frontend tests cover cases A through P in this specification, and the ignored live suite covers at least 30 adversarial, natural, English, Roman Urdu, code-switched, correction, side-question, frustration, evidence, policy, and terminal conversations when DeepSeek is configured.
 14. A clear self-injury is retained as the reason and confidently classified as sick leave under the active policy; a direct `5 days` answer is stored immediately and the next response cannot ask for duration again.
 15. Red-team PASS requires both correct authoritative state and semantically correct employee-facing text, including concept-specific questions, evidence explanation, terminal closure, and absence of unsupported promises.
+16. Every turn can contribute multiple valid facts, and high-confidence policy-supported inference advances without asking employees for backend taxonomy words.
+17. References and corrections recover employee-supplied context without persisting the reference phrase as a business fact.
+18. A concept receives at most three progressively clearer clarification prompts; the next unresolved response closes with `incomplete_conversation` and creates no SOP request.
 
-## Implementation and verification
+## Current implementation
 
-Implemented on `refactor/conversational-ai-v2`:
+Implemented on `fix/intelligent-conversation-experience`:
 
-- Added authenticated domain-session creation, immutable domain scope, bounded server-owned recent turns, stable language tracking, compare-and-set persistence, evidence-gate enforcement, and typed closed-conversation errors.
+- Added the department-to-language start flow, immutable server-owned output language, bounded server-owned recent turns, compare-and-set persistence, evidence-gate enforcement, and typed closed-conversation errors.
 - Split conversational work into structured turn understanding and bounded response composition. Added normalization for valid DeepSeek JSON variations and a conservative provider-failure repair path. The server continues to validate all facts and owns every lifecycle action.
 - Added configurable confidence thresholds for inferred leave categories and typed incidents. Category inference receives the allowed taxonomy and retrieved active-policy context. Governance incidents are persisted separately while legitimate request facts remain governed by the selected domain.
 - Added natural named-month, ordinal, relative, and qualified-weekday date parsing, ambiguous numeric-date clarification, and deterministic pre-submit backdate rejection. The DMN backdate rule remains unchanged.
 - Added explicit start and evidence-skip APIs, database-confirmed evidence upload finalization, structured terminal results, and authoritative UI states/actions.
-- Rebuilt the chat UI around `DOMAIN_SELECTION`, `ACTIVE_CHAT`, `EVIDENCE_GATE`, and `TERMINAL`, including the four domain choices, the exact upload/skip transaction gate, deterministic outcome titles, and new-conversation reset.
+- Rebuilt the chat UI around `DOMAIN_SELECTION`, `LANGUAGE_SELECTION`, `ACTIVE_CHAT`, `EVIDENCE_GATE`, and `TERMINAL`, including the four domain choices, two explicit language choices, the exact upload/skip transaction gate, deterministic outcome titles, and new-conversation reset.
 - Preserved the form submission endpoint, request schemas, workflow/DMN authority, retrieval adapter statuses, ownership checks, evidence authorization, and fail-closed workflow recovery.
 - Repaired partial candidates field by field, strengthened the free-form reason contract and last-required-explanation safety rule, and added policy-guided self-injury inference.
 - Added typo-tolerant date-word normalization and aligned leave range, derived end date, evidence threshold, extracted metadata, HRMS balance, and DMN calculations with the seeded SOP's working-day semantics.
-- Replaced generic response descriptors with typed purpose plans and semantic output validation. Evidence messages cannot collect request facts, terminal messages cannot invite chat or make unsupported promises, and generated text that violates the plan is discarded.
-- Strengthened the 30-conversation red-team verdict so every turn must match the expected business concept and authoritative UI state. The exact broken-leg transcript and a separate staged `5 days` regression are permanent cases.
+- Expanded structured turn understanding to handle holistic facts, separately typed recovered facts, conversational references, policy context, and immutable language context.
+- Replaced generic response descriptors with typed purpose plans and language-aware semantic output validation. Evidence messages cannot collect request facts, terminal messages cannot invite chat or make unsupported promises, and generated text that violates the plan is discarded.
+- Added concept-specific clarification counters, varied second and third explanations, and a request-free `incomplete_conversation` closure after three unsuccessful clarification attempts.
+- Extended permanent backend and frontend regressions for required language selection, immutable output language, holistic extraction, reference recovery, and incomplete terminal behavior.
 
-Verification completed on 7 September 2026:
-
-- Python: 83/83 tests passed with `python -m unittest tests.test_conversation_engine -q`.
-- Frontend: 10/10 tests passed with `node --test backend/tests/frontend_contract.test.js`.
-- Local bounded-fallback red team: 30/30 conversations passed.
-- Live DeepSeek red team: 30/30 conversations passed using the configured provider.
-- Python module compilation and JavaScript syntax checks passed.
-- Generated red-team JSON and test logs remained under ignored `test-results/` and are not repository changes.
-
-The automated red-team harness uses the isolated Mongo adapter and degraded keyword retrieval because semantic embeddings are unavailable in the test environment. It exercises the real conversation service, schemas, workflow, evidence handlers, and configured DeepSeek provider, but it is not browser UAT or human organizational policy review.
+The bounded deterministic parser remains a degraded provider-failure path and cannot match the model's open-ended semantic understanding. Public holidays are still excluded only when an authoritative organization calendar is added. Human browser testing and organizational policy review remain outside this architecture contract.

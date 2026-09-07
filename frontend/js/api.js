@@ -70,7 +70,7 @@ const API = (() => {
 
         // Requests
         submitRequest: (data) => request('POST', '/api/request/submit', data),
-        startChatConversation: domain => request('POST', '/api/request/assistant/start', {domain}),
+        startChatConversation: (domain, language) => request('POST', '/api/request/assistant/start', {domain, language}),
         sendChatAssistant: (message, conversation_id) => request('POST', '/api/request/assistant', {message, conversation_id}),
         uploadChatEvidence,
         skipChatEvidence: conversationId => request('POST', `/api/evidence/draft/${conversationId}/skip`),

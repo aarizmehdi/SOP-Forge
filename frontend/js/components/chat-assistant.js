@@ -4,6 +4,7 @@
 const ChatAssistant = (() => {
     const STATES = Object.freeze({
         DOMAIN_SELECTION: 'DOMAIN_SELECTION',
+        LANGUAGE_SELECTION: 'LANGUAGE_SELECTION',
         ACTIVE_CHAT: 'ACTIVE_CHAT',
         EVIDENCE_GATE: 'EVIDENCE_GATE',
         TERMINAL: 'TERMINAL',
@@ -18,6 +19,8 @@ const ChatAssistant = (() => {
     let uiState = STATES.DOMAIN_SELECTION;
     let allowedActions = [];
     let conversationId = null;
+    let selectedDomain = null;
+    let selectedLanguage = null;
     let isProcessing = false;
     let recognition = null;
     let isRecording = false;
@@ -25,6 +28,8 @@ const ChatAssistant = (() => {
 
     async function render(container) {
         conversationId = null;
+        selectedDomain = null;
+        selectedLanguage = null;
         isProcessing = false;
         allowedActions = [];
         uiState = STATES.DOMAIN_SELECTION;
@@ -35,6 +40,7 @@ const ChatAssistant = (() => {
                 <div id="ca-welcome" class="ca-welcome">
                     <div class="ca-welcome-inner">
                         <div class="ca-hero-icon" aria-hidden="true">✦</div>
+                        <div class="ca-step-label">Step 1 of 2</div>
                         <h1 class="ca-hero-title">Good ${getGreeting()}, ${escapeHtml(firstName)}</h1>
                         <p class="ca-hero-subtitle">Choose an area so Forge AI can help in the right professional context.</p>
                         <div class="ca-quick-actions" id="ca-domain-choices">
@@ -58,21 +64,22 @@ const ChatAssistant = (() => {
         return h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening';
     }
 
-    function setState(state, actions = []) {
+    function setState(state, actions = [], terminal = null) {
         if (!Object.values(STATES).includes(state)) throw new Error('Unknown conversation UI state');
         uiState = state;
         allowedActions = actions;
         const welcome = document.getElementById('ca-welcome');
         const messages = document.getElementById('ca-messages');
-        if (welcome) welcome.style.display = state === STATES.DOMAIN_SELECTION ? 'flex' : 'none';
-        if (messages) messages.style.display = state === STATES.DOMAIN_SELECTION ? 'none' : 'flex';
-        renderControls();
+        const selecting = state === STATES.DOMAIN_SELECTION || state === STATES.LANGUAGE_SELECTION;
+        if (welcome) welcome.style.display = selecting ? 'flex' : 'none';
+        if (messages) messages.style.display = selecting ? 'none' : 'flex';
+        renderControls(terminal);
     }
 
     function renderControls(terminal = null) {
         const host = document.getElementById('ca-controls');
         if (!host) return;
-        if (uiState === STATES.DOMAIN_SELECTION) {
+        if (uiState === STATES.DOMAIN_SELECTION || uiState === STATES.LANGUAGE_SELECTION) {
             host.innerHTML = '';
             return;
         }
@@ -100,11 +107,13 @@ const ChatAssistant = (() => {
             return;
         }
         const title = terminalTitle(terminal);
+        const viewAction = terminal?.outcome === 'incomplete_conversation'
+            ? '' : '<a class="btn btn-primary" href="#/requests">View Request</a>';
         host.innerHTML = `
             <div class="ca-terminal-bar" data-ui-state="TERMINAL">
                 <strong class="ca-terminal-title">${escapeHtml(title)}</strong>
                 <div class="ca-terminal-actions">
-                    <a class="btn btn-primary" href="#/requests">View Request</a>
+                    ${viewAction}
                     <button class="btn btn-secondary" onclick="ChatAssistant.startNewConversation()">Start New Conversation</button>
                 </div>
             </div>`;
@@ -112,6 +121,7 @@ const ChatAssistant = (() => {
 
     function terminalTitle(terminal) {
         if (!terminal) return 'Request Complete';
+        if (terminal.outcome === 'incomplete_conversation') return 'Conversation Closed';
         if (terminal.status === 'escalated' || terminal.decision === 'routed') return 'Sent for Manager Review';
         if (terminal.decision === 'approved') return 'Approved';
         if (terminal.decision === 'rejected') return 'Declined';
@@ -120,19 +130,55 @@ const ChatAssistant = (() => {
 
     async function selectDomain(domain) {
         if (isProcessing || uiState !== STATES.DOMAIN_SELECTION) return;
+        if (!DOMAINS.some(([value]) => value === domain)) return;
+        selectedDomain = domain;
+        const selected = DOMAINS.find(([value]) => value === domain);
+        const inner = document.querySelector('.ca-welcome-inner');
+        if (!inner) return;
+        inner.innerHTML = `
+            <div class="ca-hero-icon" aria-hidden="true">✦</div>
+            <div class="ca-step-label">Step 2 of 2</div>
+            <h1 class="ca-hero-title">Choose conversation language</h1>
+            <p class="ca-hero-subtitle">Forge AI will use this language for every reply in ${escapeHtml(selected[1])}.</p>
+            <div class="ca-quick-actions" id="ca-language-choices">
+                <button class="ca-action-card" data-language-choice="en" onclick="ChatAssistant.selectLanguage('en')">
+                    <span class="ca-action-text"><span class="ca-action-title">English</span>
+                    <span class="ca-action-desc">All Forge AI replies will be in English</span></span>
+                    <span class="ca-action-arrow" aria-hidden="true">→</span>
+                </button>
+                <button class="ca-action-card" data-language-choice="roman_urdu" onclick="ChatAssistant.selectLanguage('roman_urdu')">
+                    <span class="ca-action-text"><span class="ca-action-title">Roman Urdu</span>
+                    <span class="ca-action-desc">Tamam replies Roman Urdu mein hongay</span></span>
+                    <span class="ca-action-arrow" aria-hidden="true">→</span>
+                </button>
+            </div>
+            <button class="btn btn-ghost" onclick="ChatAssistant.backToDepartments()">Back to departments</button>`;
+        setState(STATES.LANGUAGE_SELECTION, []);
+    }
+
+    async function selectLanguage(language) {
+        if (isProcessing || uiState !== STATES.LANGUAGE_SELECTION || !selectedDomain) return;
+        if (!['en', 'roman_urdu'].includes(language)) return;
+        selectedLanguage = language;
         isProcessing = true;
-        document.querySelectorAll('[data-domain-choice]').forEach(button => { button.disabled = true; });
+        document.querySelectorAll('[data-language-choice]').forEach(button => { button.disabled = true; });
         try {
-            const result = await API.startChatConversation(domain);
+            const result = await API.startChatConversation(selectedDomain, selectedLanguage);
             conversationId = result.conversation_id;
             appendAssistant(result.message);
             applyServerResult(result);
         } catch (error) {
             App.toast(error.message || 'Could not start the conversation.', 'error');
-            document.querySelectorAll('[data-domain-choice]').forEach(button => { button.disabled = false; });
+            document.querySelectorAll('[data-language-choice]').forEach(button => { button.disabled = false; });
         } finally {
             isProcessing = false;
         }
+    }
+
+    function backToDepartments() {
+        if (isProcessing || uiState !== STATES.LANGUAGE_SELECTION) return;
+        const container = document.querySelector('.ca-layout')?.parentElement;
+        if (container) render(container);
     }
 
     function appendUser(text) {
@@ -173,8 +219,7 @@ const ChatAssistant = (() => {
         if (nextState === STATES.EVIDENCE_GATE && (actions.length !== 2 || !actions.includes('upload_evidence') || !actions.includes('skip_evidence'))) {
             throw new Error('Invalid evidence action contract');
         }
-        setState(nextState, actions);
-        if (nextState === STATES.TERMINAL) renderControls(result.terminal);
+        setState(nextState, actions, result.terminal);
     }
 
     async function sendUserMessage() {
@@ -279,7 +324,7 @@ const ChatAssistant = (() => {
         recognition = new webkitSpeechRecognition();
         recognition.continuous = true;
         recognition.interimResults = true;
-        recognition.lang = 'en-US';
+        recognition.lang = selectedLanguage === 'roman_urdu' ? 'ur-PK' : 'en-US';
         recognition.onresult = event => {
             let finalText = '', interim = '';
             for (let i = event.resultIndex; i < event.results.length; i += 1) {
@@ -316,8 +361,12 @@ const ChatAssistant = (() => {
     }
 
     return {
-        STATES, render, setState, selectDomain, sendUserMessage, chooseEvidenceFile,
+        STATES, render, setState, selectDomain, selectLanguage, backToDepartments,
+        sendUserMessage, chooseEvidenceFile,
         uploadEvidenceFromChat, skipEvidence, startNewConversation, toggleRecording,
-        terminalTitle, getState: () => ({uiState, allowedActions: [...allowedActions], conversationId}),
+        terminalTitle, getState: () => ({
+            uiState, allowedActions: [...allowedActions], conversationId,
+            selectedDomain, selectedLanguage,
+        }),
     };
 })();
