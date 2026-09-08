@@ -1,12 +1,11 @@
-import { Download, FilePlus2, Paperclip, Search } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { Download, FilePlus2, FileUp, Paperclip, Search } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo, useState, type ChangeEvent } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../lib/api";
 import type { RequestDetail, RequestItem } from "../types/api";
 import {
   Badge,
-  Button,
   Dialog,
   Empty,
   ErrorState,
@@ -21,12 +20,31 @@ import {
 
 export function RequestsPage() {
   const notify = useToast();
+  const cache = useQueryClient();
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<RequestDetail | null>(null);
   const [detailBusy, setDetailBusy] = useState(false);
   const query = useQuery({
     queryKey: ["my-requests"],
     queryFn: () => api.requests(100),
+  });
+  const evidenceUpload = useMutation({
+    mutationFn: async ({
+      requestId,
+      file,
+    }: {
+      requestId: string;
+      file: File;
+    }) => {
+      const result = await api.uploadRequestEvidence(requestId, file);
+      const detail = await api.request(requestId);
+      return { detail, result };
+    },
+    onSuccess: async ({ detail, result }) => {
+      setSelected(detail);
+      await cache.invalidateQueries({ queryKey: ["my-requests"] });
+      notify(result.message);
+    },
   });
   const list = useMemo(
     () =>
@@ -59,6 +77,10 @@ export function RequestsPage() {
         "error",
       );
     }
+  }
+  async function uploadEvidence(file: File) {
+    if (!selected) return;
+    await evidenceUpload.mutateAsync({ requestId: selected.id, file });
   }
   return (
     <>
@@ -164,13 +186,23 @@ export function RequestsPage() {
             ? "Loading request…"
             : `Request · ${selected?.id.slice(0, 8) ?? ""}`
         }
-        onClose={() => setSelected(null)}
+        onClose={() => {
+          setSelected(null);
+          evidenceUpload.reset();
+        }}
         size="lg"
       >
         {detailBusy ? (
           <Loading />
         ) : (
-          selected && <RequestDetails item={selected} openEvidence={evidence} />
+          selected && (
+            <RequestDetails
+              item={selected}
+              openEvidence={evidence}
+              uploadEvidence={uploadEvidence}
+              uploading={evidenceUpload.isPending}
+            />
+          )
         )}
       </Dialog>
     </>
@@ -179,10 +211,37 @@ export function RequestsPage() {
 export function RequestDetails({
   item,
   openEvidence,
+  uploadEvidence,
+  uploading,
 }: {
   item: RequestDetail;
   openEvidence: (id: string) => void;
+  uploadEvidence: (file: File) => Promise<void>;
+  uploading: boolean;
 }) {
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const canUpload =
+    !item.has_evidence &&
+    (item.status === "in_progress" || item.status === "escalated");
+  async function selectEvidence(event: ChangeEvent<HTMLInputElement>) {
+    const input = event.currentTarget;
+    const selectedFile = input.files?.[0];
+    input.value = "";
+    if (!selectedFile) return;
+    const validationError = validateEvidence(selectedFile);
+    if (validationError) {
+      setUploadError(validationError);
+      return;
+    }
+    setUploadError(null);
+    try {
+      await uploadEvidence(selectedFile);
+    } catch (error) {
+      setUploadError(
+        error instanceof Error ? error.message : "Evidence upload failed.",
+      );
+    }
+  }
   return (
     <div className="detail-stack">
       <div className="detail-summary">
@@ -204,6 +263,31 @@ export function RequestDetails({
           />
         ))}
       </dl>
+      {canUpload && (
+        <section className="request-evidence-upload">
+          <h3>Supporting evidence</h3>
+          <label className="file-picker" aria-disabled={uploading}>
+            <FileUp />
+            <span>
+              <strong>
+                {uploading ? "Uploading evidence…" : "Attach evidence"}
+              </strong>
+              <small>PDF, JPEG or PNG · maximum 5 MB</small>
+            </span>
+            <input
+              type="file"
+              accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/jpeg,image/png"
+              disabled={uploading}
+              onChange={(event) => void selectEvidence(event)}
+            />
+          </label>
+          {uploadError && (
+            <p className="inline-error" role="alert">
+              {uploadError}
+            </p>
+          )}
+        </section>
+      )}
       {item.evidence_list.length > 0 && (
         <section>
           <h3>Supporting evidence</h3>
@@ -225,4 +309,24 @@ export function RequestDetails({
       )}
     </div>
   );
+}
+
+const MAX_EVIDENCE_SIZE = 5 * 1024 * 1024;
+const EVIDENCE_MIME_TYPES = new Set([
+  "application/pdf",
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+]);
+
+function validateEvidence(file: File) {
+  if (!file.size) return "Choose a nonempty PDF, JPEG, or PNG file to upload.";
+  if (file.size > MAX_EVIDENCE_SIZE)
+    return "Evidence must be no larger than 5 MB.";
+  if (
+    !EVIDENCE_MIME_TYPES.has(file.type) ||
+    !/\.(pdf|jpe?g|png)$/i.test(file.name)
+  )
+    return "Evidence must be a PDF, JPEG, or PNG file.";
+  return null;
 }

@@ -1,4 +1,5 @@
 import {
+  Activity,
   AlertTriangle,
   ArrowUpRight,
   CheckCircle2,
@@ -21,6 +22,115 @@ import {
 
 export function DashboardPage() {
   const { user } = useAuth();
+  return user?.role === "executive" || user?.role === "admin" ? (
+    <ExecutiveCommandCenter />
+  ) : (
+    <TeamActionCenter name={user?.name} />
+  );
+}
+
+function ExecutiveCommandCenter() {
+  const summary = useQuery({
+    queryKey: ["audit-summary"],
+    queryFn: api.auditSummary,
+  });
+  const logs = useQuery({
+    queryKey: ["audit", "recent"],
+    queryFn: () => api.audits({ limit: 6 }),
+  });
+  if (summary.isLoading || logs.isLoading)
+    return <Loading label="Preparing the command center" />;
+  const error = summary.error || logs.error;
+  if (error)
+    return (
+      <ErrorState
+        error={error}
+        retry={() => {
+          void summary.refetch();
+          void logs.refetch();
+        }}
+      />
+    );
+
+  const total = summary.data?.total_entries ?? 0;
+  const rateBase = total || 1;
+  const aiResolutionRate =
+    Math.round(((summary.data?.auto_approved ?? 0) / rateBase) * 100) +
+    Math.round(((summary.data?.auto_rejected ?? 0) / rateBase) * 100);
+  const escalationRate = Math.round(
+    ((summary.data?.escalated ?? 0) / rateBase) * 100,
+  );
+
+  return (
+    <>
+      <PageHeader
+        eyebrow="Decision operations"
+        title="Executive Command Center"
+        description="A source-backed view of automated decisions, escalations, service levels, and system activity."
+      />
+      <section className="metric-grid">
+        <Metric
+          icon={<ShieldCheck />}
+          value={`${aiResolutionRate}%`}
+          label="AI Resolution Rate"
+          detail="Requests handled without human input"
+        />
+        <Metric
+          icon={<Activity />}
+          value={total}
+          label="Total Volume"
+          detail="Total organizational requests processed"
+        />
+        <Metric
+          icon={<AlertTriangle />}
+          value={`${escalationRate}%`}
+          label="Escalation Rate"
+          detail="Requests routed to manual review"
+          tone={escalationRate > 0 ? "warning" : undefined}
+        />
+        <Metric
+          icon={<Clock3 />}
+          value={summary.data?.sla_breaches ?? 0}
+          label="SLA Breaches"
+          detail="Manager reviews exceeding time limits"
+          tone={(summary.data?.sla_breaches ?? 0) > 0 ? "danger" : undefined}
+        />
+      </section>
+      <section className="panel">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">Activity</p>
+            <h2>Recent System Activity</h2>
+          </div>
+          <Link to="/audit">
+            Audit trail <ArrowUpRight size={15} />
+          </Link>
+        </div>
+        {logs.data?.slice(0, 6).map((log) => (
+          <div className="activity-row" key={log.id}>
+            <span className="timeline-dot" />
+            <span>
+              <strong>{titleCase(log.event_type)}</strong>
+              <small>
+                {log.actor_name ?? "AI Engine"} · {log.actor_role ?? "System"}
+              </small>
+              <small>{log.evaluation_reasoning ?? "No details provided"}</small>
+            </span>
+            <small className="row-end">{formatDate(log.created_at)}</small>
+          </div>
+        ))}
+        {!logs.data?.length && (
+          <div className="compact-empty">
+            <Activity />
+            <p>No system activity has been recorded.</p>
+          </div>
+        )}
+      </section>
+    </>
+  );
+}
+
+function TeamActionCenter({ name }: { name?: string }) {
   const reviews = useQuery({
     queryKey: ["reviews", "escalated"],
     queryFn: () => api.reviewQueue("escalated"),
@@ -52,13 +162,13 @@ export function DashboardPage() {
       />
     );
   const openIncidents =
-    incidents.data?.filter((x) => x.status === "open").length ?? 0;
+    incidents.data?.filter((item) => item.status === "open").length ?? 0;
   return (
     <>
       <PageHeader
         eyebrow="Decision operations"
-        title={`Good day, ${user?.name.split(" ")[0]}`}
-        description="A current view of governed requests, service levels, and exceptions."
+        title="Team Action Center"
+        description={`Welcome back${name ? `, ${name.split(" ")[0]}` : ""}. Review governed requests, service levels, and exceptions.`}
       />
       <section className="metric-grid">
         <Metric
@@ -160,6 +270,7 @@ export function DashboardPage() {
     </>
   );
 }
+
 function Metric({
   icon,
   value,
@@ -168,7 +279,7 @@ function Metric({
   tone,
 }: {
   icon: React.ReactNode;
-  value: number;
+  value: React.ReactNode;
   label: string;
   detail: string;
   tone?: string;

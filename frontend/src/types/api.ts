@@ -43,6 +43,13 @@ export interface Evidence {
   size_bytes: number;
   uploaded_at: string;
 }
+export interface EvidenceUploadResponse {
+  status: string;
+  message: string;
+  evidence: Evidence;
+  new_request_status: RequestStatus;
+  new_decision: Decision;
+}
 export interface RequestItem {
   id: string;
   request_type: RequestType;

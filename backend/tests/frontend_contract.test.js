@@ -28,9 +28,47 @@ test('chat follows the authoritative five-state contract', () => {
   assert.match(source, /upload_evidence/); assert.match(source, /skip_evidence/);
   for (const domain of ['leave_hr','expenses_finance','it_system_access','policies_general']) assert.ok(source.includes(domain), `missing ${domain}`);
 });
+test('voice input preserves continuous interim recognition and intentional-stop submission', () => {
+  const source = read('frontend/src/pages/ChatPage.tsx');
+  assert.match(source, /instance\.continuous = true/);
+  assert.match(source, /instance\.interimResults = true/);
+  assert.match(source, /e\.resultIndex/);
+  assert.match(source, /result\.isFinal/);
+  assert.match(source, /manualSpeechStop\.current/);
+  assert.match(source, /submitMessage\(currentSpeechText\.current\)/);
+});
+test('employee request detail supports guarded post-submission evidence upload', () => {
+  const api = read('frontend/src/lib/api.ts');
+  const page = read('frontend/src/pages/RequestsPage.tsx');
+  assert.match(api, /uploadRequestEvidence/);
+  assert.match(api, /\/api\/evidence\/upload\/\$\{encodeURIComponent\(id\)\}/);
+  assert.match(page, /5 \* 1024 \* 1024/);
+  assert.match(page, /item\.status === "in_progress"/);
+  assert.match(page, /item\.status === "escalated"/);
+  assert.match(page, /!item\.has_evidence/);
+  assert.match(page, /invalidateQueries\(\{ queryKey: \["my-requests"\] \}\)/);
+});
+test('dashboard keeps manager and executive role-specific experiences', () => {
+  const source = read('frontend/src/pages/DashboardPage.tsx');
+  assert.match(source, /user\?\.role === "executive"/);
+  assert.match(source, /user\?\.role === "admin"/);
+  for (const label of ['Team Action Center','Executive Command Center','AI Resolution Rate','Total Volume','Escalation Rate','SLA Breaches','Recent System Activity']) assert.ok(source.includes(label), `missing ${label}`);
+  assert.match(source, /summary\.data\?\.total_entries/);
+  assert.match(source, /summary\.data\?\.auto_approved/);
+  assert.match(source, /summary\.data\?\.auto_rejected/);
+  assert.match(source, /summary\.data\?\.escalated/);
+});
+test('review history maps to supported backend filters and gates actions by status', () => {
+  const source = read('frontend/src/pages/ReviewPage.tsx');
+  assert.doesNotMatch(source, /api\.reviewQueue\(filter\)/);
+  assert.match(source, /filter === "resolved" \|\| filter === "overridden" \? "resolved" : filter/);
+  assert.match(source, /item\.status === filter/);
+  assert.match(source, /canDecide=\{selected\.status === "escalated"\}/);
+  assert.match(source, /selected\.status !== "overridden"/);
+});
 test('all preserved backend workflows are represented in the typed client', () => {
   const source = read('frontend/src/lib/api.ts');
-  for (const path of ['/api/auth/login','/api/request/submit','/api/request/assistant/start','/api/review/pending','/api/audit/logs','/api/incidents','/api/admin/sop','/api/evidence/file','/api/speech/token']) assert.ok(source.includes(path), `missing ${path}`);
+  for (const path of ['/api/auth/login','/api/request/submit','/api/request/assistant/start','/api/review/pending','/api/audit/logs','/api/incidents','/api/admin/sop','/api/evidence/file','/api/evidence/upload/','/api/speech/token']) assert.ok(source.includes(path), `missing ${path}`);
 });
 test('production targets preserve Vercel API proxy and FastAPI dist serving', () => {
   const vercel = read('frontend/vercel.json'); const backend = read('backend/app/main.py');

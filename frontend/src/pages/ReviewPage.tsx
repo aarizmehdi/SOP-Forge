@@ -28,24 +28,31 @@ import {
   useToast,
 } from "../components/ui";
 
+type ReviewFilter = "escalated" | "resolved" | "overridden" | "all";
+
 export function ReviewPage() {
   const { user } = useAuth();
-  const [filter, setFilter] = useState("escalated");
+  const [filter, setFilter] = useState<ReviewFilter>("escalated");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<ReviewItem | null>(null);
   const [mode, setMode] = useState<"detail" | "decide" | "override">("detail");
+  const backendFilter =
+    filter === "resolved" || filter === "overridden" ? "resolved" : filter;
   const query = useQuery({
     queryKey: ["reviews", filter],
-    queryFn: () => api.reviewQueue(filter),
+    queryFn: () => api.reviewQueue(backendFilter),
   });
   const list = useMemo(
     () =>
-      query.data?.filter((x) =>
-        `${x.employee_name} ${x.employee_id_code} ${x.request_type}`
-          .toLowerCase()
-          .includes(search.toLowerCase()),
-      ) ?? [],
-    [query.data, search],
+      query.data?.filter((item) => {
+        const statusMatches = filter === "all" ? true : item.status === filter;
+        const searchMatches =
+          `${item.employee_name} ${item.employee_id_code} ${item.request_type}`
+            .toLowerCase()
+            .includes(search.toLowerCase());
+        return statusMatches && searchMatches;
+      }) ?? [],
+    [filter, query.data, search],
   );
   return (
     <>
@@ -66,7 +73,10 @@ export function ReviewPage() {
         </label>
         <label>
           <span className="sr-only">Filter by status</span>
-          <select value={filter} onChange={(e) => setFilter(e.target.value)}>
+          <select
+            value={filter}
+            onChange={(e) => setFilter(e.target.value as ReviewFilter)}
+          >
             <option value="escalated">Awaiting review</option>
             <option value="resolved">Resolved</option>
             <option value="overridden">Overridden</option>
@@ -157,7 +167,11 @@ export function ReviewPage() {
         {selected && mode === "detail" && (
           <ReviewDetail
             item={selected}
-            canOverride={user?.role === "executive" || user?.role === "admin"}
+            canDecide={selected.status === "escalated"}
+            canOverride={
+              (user?.role === "executive" || user?.role === "admin") &&
+              selected.status !== "overridden"
+            }
             onDecide={() => setMode("decide")}
             onOverride={() => setMode("override")}
           />
@@ -191,11 +205,13 @@ function summary(data: Record<string, unknown>) {
 }
 function ReviewDetail({
   item,
+  canDecide,
   canOverride,
   onDecide,
   onOverride,
 }: {
   item: ReviewItem;
+  canDecide: boolean;
   canOverride: boolean;
   onDecide: () => void;
   onOverride: () => void;
@@ -280,9 +296,11 @@ function ReviewDetail({
         </section>
       ) : null}
       <div className="dialog-actions">
-        <Button variant="secondary" onClick={onDecide}>
-          Manager decision
-        </Button>
+        {canDecide && (
+          <Button variant="secondary" onClick={onDecide}>
+            Manager decision
+          </Button>
+        )}
         {canOverride && (
           <Button onClick={onOverride}>Executive override</Button>
         )}

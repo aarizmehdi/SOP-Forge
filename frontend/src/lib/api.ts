@@ -5,6 +5,7 @@ import type {
   ConversationDomain,
   ConversationLanguage,
   Evidence,
+  EvidenceUploadResponse,
   Health,
   Incident,
   LoginResponse,
@@ -114,6 +115,17 @@ export const api = {
   requests: (limit = 50, offset = 0) =>
     request<RequestItem[]>(`/api/request/my?limit=${limit}&offset=${offset}`),
   request: (id: string) => request<RequestDetail>(`/api/request/${id}`),
+  uploadRequestEvidence: (id: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<EvidenceUploadResponse>(
+      `/api/evidence/upload/${encodeURIComponent(id)}`,
+      {
+        method: "POST",
+        body: form,
+      },
+    );
+  },
   leaveBalances: () =>
     request<Record<string, unknown>>("/api/request/leave-balances"),
   submitRequest: (payload: {
@@ -124,7 +136,9 @@ export const api = {
       method: "POST",
       ...json(payload),
     }),
-  reviewQueue: (status = "escalated") =>
+  reviewQueue: (
+    status: "escalated" | "resolved" | "past" | "all" = "escalated",
+  ) =>
     request<ReviewItem[]>(
       `/api/review/pending?status_filter=${encodeURIComponent(status)}`,
     ),

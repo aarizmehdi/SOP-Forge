@@ -76,6 +76,9 @@ export function ChatPage() {
   const [file, setFile] = useState<File | null>(null);
   const [recording, setRecording] = useState(false);
   const recognition = useRef<SpeechRecognition | null>(null);
+  const manualSpeechStop = useRef(false);
+  const finalSpeechText = useRef("");
+  const currentSpeechText = useRef("");
   const endRef = useRef<HTMLDivElement>(null);
   const notify = useToast();
   const nav = useNavigate();
@@ -85,8 +88,10 @@ export function ChatPage() {
   );
   useEffect(
     () => () => {
-      recognition.current?.stop();
+      manualSpeechStop.current = false;
+      const instance = recognition.current;
       recognition.current = null;
+      instance?.stop();
     },
     [],
   );
@@ -119,9 +124,8 @@ export function ChatPage() {
       setBusy(false);
     }
   }
-  async function send(e?: FormEvent) {
-    e?.preventDefault();
-    const value = text.trim();
+  async function submitMessage(value: string) {
+    value = value.trim();
     if (!value || !conversationId || !actions.includes("send_message")) return;
     setMessages((v) => [...v, { id: Date.now(), role: "user", text: value }]);
     setText("");
@@ -133,6 +137,10 @@ export function ChatPage() {
     } finally {
       setBusy(false);
     }
+  }
+  function send(e?: FormEvent) {
+    e?.preventDefault();
+    void submitMessage(text);
   }
   async function upload() {
     if (!file || !conversationId) return;
@@ -158,7 +166,10 @@ export function ChatPage() {
     }
   }
   function reset() {
-    recognition.current?.stop();
+    manualSpeechStop.current = false;
+    const instance = recognition.current;
+    recognition.current = null;
+    instance?.stop();
     setState("DOMAIN_SELECTION");
     setDomain(null);
     setLanguage(null);
@@ -177,22 +188,59 @@ export function ChatPage() {
       return;
     }
     if (recording) {
+      manualSpeechStop.current = true;
       recognition.current?.stop();
       return;
     }
     const instance = new Ctor();
     recognition.current = instance;
+    manualSpeechStop.current = false;
+    finalSpeechText.current = text.trim();
+    currentSpeechText.current = finalSpeechText.current;
     instance.lang = language === "roman_urdu" ? "ur-PK" : "en-US";
-    instance.interimResults = false;
+    instance.continuous = true;
+    instance.interimResults = true;
     instance.onresult = (e) => {
-      const phrase = e.results[0]?.[0]?.transcript;
-      if (phrase) setText((v) => `${v}${v ? " " : ""}${phrase}`);
+      let interimText = "";
+      for (let index = e.resultIndex; index < e.results.length; index += 1) {
+        const result = e.results[index];
+        if (!result) continue;
+        const phrase = result[0]?.transcript.trim();
+        if (!phrase) continue;
+        if (result.isFinal) {
+          finalSpeechText.current = [finalSpeechText.current, phrase]
+            .filter(Boolean)
+            .join(" ");
+        } else {
+          interimText = [interimText, phrase].filter(Boolean).join(" ");
+        }
+      }
+      currentSpeechText.current = [finalSpeechText.current, interimText]
+        .filter(Boolean)
+        .join(" ");
+      setText(currentSpeechText.current);
     };
-    instance.onerror = () =>
+    instance.onerror = (event) => {
+      if (event.error === "aborted" && manualSpeechStop.current) return;
+      manualSpeechStop.current = false;
+      setRecording(false);
       notify("Speech input could not be captured.", "error");
-    instance.onend = () => setRecording(false);
-    instance.start();
-    setRecording(true);
+    };
+    instance.onend = () => {
+      if (recognition.current !== instance) return;
+      recognition.current = null;
+      setRecording(false);
+      const shouldSubmit = manualSpeechStop.current;
+      manualSpeechStop.current = false;
+      if (shouldSubmit) void submitMessage(currentSpeechText.current);
+    };
+    try {
+      instance.start();
+      setRecording(true);
+    } catch {
+      recognition.current = null;
+      notify("Speech input could not be started.", "error");
+    }
   }
   return (
     <>
@@ -482,6 +530,7 @@ function ChatControls({
         maxLength={4000}
         placeholder="Write your answer…"
         value={text}
+        readOnly={recording}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey) {
@@ -503,7 +552,9 @@ function ChatControls({
       <button
         type="submit"
         aria-label="Send message"
-        disabled={!text.trim() || busy || !actions.includes("send_message")}
+        disabled={
+          recording || !text.trim() || busy || !actions.includes("send_message")
+        }
       >
         <ArrowUp />
       </button>
@@ -518,15 +569,26 @@ declare global {
   }
   interface SpeechRecognition extends EventTarget {
     lang: string;
+    continuous: boolean;
     interimResults: boolean;
     start(): void;
     stop(): void;
     onresult: ((event: SpeechRecognitionEvent) => void) | null;
-    onerror: (() => void) | null;
+    onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
     onend: (() => void) | null;
   }
   interface SpeechRecognitionEvent extends Event {
-    results: { [index: number]: { [index: number]: { transcript: string } } };
+    resultIndex: number;
+    results: {
+      length: number;
+      [index: number]: {
+        isFinal: boolean;
+        [index: number]: { transcript: string };
+      };
+    };
+  }
+  interface SpeechRecognitionErrorEvent extends Event {
+    error: string;
   }
   interface SpeechRecognitionConstructor {
     new (): SpeechRecognition;
